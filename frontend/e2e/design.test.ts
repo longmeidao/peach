@@ -13,6 +13,7 @@ import {
   configurationBody, expectBody, launch, layout, requiredEnv, settle, visit, VIEWPORTS, type Viewport, type Visit,
 } from './harness.ts';
 import { ITEM, openItemPage } from './item-fixture.ts';
+import { openHome, openPanel, ORDER, PANEL, stubServer } from './settings-fixture.ts';
 
 const DESKTOP = VIEWPORTS.find((viewport) => !viewport.mobile)!;
 const MOBILE = VIEWPORTS.find((viewport) => viewport.mobile)!;
@@ -4603,6 +4604,282 @@ describe('设计决定', () => {
       assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();
+    }
+  });
+
+  /* 设置面板：盖住整页的弹层与作品详情浮窗同一档遮罩、同一组进出场；遮罩不带模糊，值只来自 `--scrim`。
+     动效要真跑起来才读得到关键帧名，这一条自建不减动态的上下文。 */
+  it('设置面板的遮罩取 --scrim、不带模糊、压在最顶层，卡片用弹层那一组关键帧进出', { timeout: 60_000 }, async () => {
+    const context = await browser.newContext({ viewport: { width: DESKTOP.width, height: DESKTOP.height } });
+    await context.addInitScript(() => localStorage.setItem('peach.settings.v1', JSON.stringify({ detailAutoplay: false })));
+    try {
+      const page = await context.newPage();
+      await stubServer(page);
+      await page.goto(`${requiredEnv('PEACH_E2E_ORIGIN')}/`, { waitUntil: 'load' });
+      await settle(page);
+      await openPanel(page);
+      const scrim = await tokenColor(page, 'body', '--scrim');
+      const shown = await page.locator(PANEL).evaluate((panel) => {
+        const style = getComputedStyle(panel);
+        const card = getComputedStyle(panel.querySelector('[data-settings-card]')!);
+        return {
+          position: style.position, z: style.zIndex, inset: [style.top, style.right, style.bottom, style.left],
+          layer: getComputedStyle(document.documentElement).getPropertyValue('--layer-dialog').trim(),
+          face: style.backgroundColor, blur: [style.backdropFilter, card.backdropFilter],
+          backdrop: [style.animationName, style.animationFillMode], card: [card.animationName, card.animationFillMode],
+          padding: [style.paddingTop, style.paddingBottom],
+        };
+      });
+      assert.equal(shown.position, 'fixed');
+      assert.equal(shown.z, shown.layer, '设置遮罩不在 --layer-dialog 那一层');
+      assert.deepEqual(shown.inset, ['0px', '0px', '0px', '0px'], '设置遮罩没有铺满视口');
+      assert.equal(shown.face, scrim, '设置遮罩的颜色不是 --scrim');
+      assert.deepEqual(shown.blur, ['none', 'none'], '设置遮罩或卡片带了模糊');
+      assert.deepEqual(shown.backdrop, ['settings-backdrop-in', 'both']);
+      // 进场填 `backwards`：终点帧留下的 filter 会另起一个 backdrop root，左栏玻璃就只采样得到卡片自己。
+      assert.deepEqual(shown.card, ['board-dialog-in', 'backwards']);
+      /* 安全区内边距让开刘海与 Home 指示条；桌面上没有安全区，两端都是 18px 的底。 */
+      assert.deepEqual(shown.padding, ['18px', '18px']);
+
+      const leaving = await page.locator(PANEL).evaluate((panel) => {
+        (panel.querySelector('#settingsClose') as HTMLButtonElement).click();
+        const card = getComputedStyle(panel.querySelector('[data-settings-card]')!);
+        return { backdrop: getComputedStyle(panel).animationName, card: [card.animationName, card.animationFillMode] };
+      });
+      assert.equal(leaving.backdrop, 'settings-backdrop-out');
+      // 退场要 `both`：终点（透明）不是元素的自然状态。
+      assert.deepEqual(leaving.card, ['board-dialog-out', 'both']);
+      await page.locator(PANEL).waitFor({ state: 'hidden', timeout: 5_000 });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('设置面板的标题栏占满右栏、压在滚动区上面，滚过那段留白才投下左栏玻璃那道影子', { timeout: 60_000 }, async () => {
+    const opened = await openHome(browser);
+    const { page } = opened;
+    try {
+      await openPanel(page);
+      const shadow = await page.locator(`${PANEL} [data-settings-card]`).evaluate((card) => {
+        const probe = document.createElement('div');
+        probe.style.boxShadow = 'var(--glass-shadow)';
+        card.append(probe);
+        const value = getComputedStyle(probe).boxShadow;
+        probe.remove();
+        return value;
+      });
+      const read = () => page.locator(PANEL).evaluate((panel) => {
+        const head = panel.querySelector('[data-settings-head]')!, scroll = panel.querySelector('[data-settings-scroll]')!;
+        const top = head.getBoundingClientRect(), body = scroll.getBoundingClientRect(), style = getComputedStyle(scroll);
+        return {
+          head: [top.left, top.width, top.bottom], body: [body.left, body.width, body.top],
+          z: getComputedStyle(head).zIndex, shadow: getComputedStyle(head).boxShadow, clip: getComputedStyle(head).clipPath,
+          overflow: style.overflowY, overscroll: style.overscrollBehaviorY, gap: style.paddingTop,
+        };
+      });
+      const resting = await read();
+      assert.deepEqual(resting.head.slice(0, 2), resting.body.slice(0, 2), '标题栏和滚动区不是同一列同一宽');
+      assert.ok(resting.head[2]! <= resting.body[2]! + 0.5, '标题栏没有压在滚动区上面');
+      assert.equal(resting.z, '2');
+      assert.equal(resting.overflow, 'auto');
+      assert.equal(resting.overscroll, 'contain', '滚到底之后滚动会漏给背后的页面');
+      assert.equal(resting.shadow, 'none', '还没滚动标题栏就投了影');
+      // 影子只要往下那一半：往上会糊在标题自己头上、往左会糊到左栏上。
+      assert.equal(resting.clip, 'inset(0px 0px -96px)');
+
+      await page.locator(`${PANEL} [data-settings-scroll]`).evaluate((scroll) => { scroll.scrollTop = 4 });
+      await page.waitForTimeout(100);
+      assert.equal((await read()).shadow, 'none', `滚动量还没过 ${resting.gap} 的留白标题栏就投了影`);
+      await page.locator(`${PANEL} [data-settings-scroll]`).evaluate((scroll) => { scroll.scrollTop = 80 });
+      await page.waitForFunction((want) => getComputedStyle(
+        document.querySelector('#settingsPanel [data-settings-head]')!).boxShadow === want, shadow);
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('设置面板左栏当前项自己不铺底，那块玻璃跟着指针走、离开这一列回到当前项', { timeout: 60_000 }, async () => {
+    const opened = await openHome(browser);
+    const { page } = opened;
+    try {
+      await openPanel(page);
+      const nav = page.locator(`${PANEL} [data-settings-nav]`);
+      const glide = () => nav.locator('[data-settings-glide]').evaluate((node) => Math.round(node.getBoundingClientRect().top));
+      const top = (name: string) => nav.getByRole('tab', { name, exact: true })
+        .evaluate((node) => Math.round(node.getBoundingClientRect().top));
+      const selected = await nav.getByRole('tab', { name: '界面', exact: true }).evaluate((node) => {
+        const style = getComputedStyle(node), icon = getComputedStyle(node.querySelector('svg')!);
+        return { face: style.backgroundColor, ring: style.boxShadow, icon: [icon.width, icon.height, icon.fill === style.color, icon.stroke] };
+      });
+      assert.equal(selected.face, 'rgba(0, 0, 0, 0)', '当前项自己铺了底，滑动的那块玻璃被盖住');
+      assert.equal(selected.ring, 'none');
+      // Remix 的线条是 `fill` 画出的轮廓，全站默认的 `stroke:currentColor;fill:none` 会让它整枚消失。
+      assert.deepEqual(selected.icon, ['20px', '20px', true, 'none']);
+      assert.equal(await glide(), await top('界面'), '玻璃没有落在当前项上');
+
+      await nav.getByRole('tab', { name: '播放', exact: true }).hover();
+      const target = await top('播放');
+      await page.waitForFunction(([want]) => Math.round(document.querySelector(
+        '#settingsPanel [data-settings-glide]')!.getBoundingClientRect().top) === want, [target]);
+      assert.equal(await nav.getByRole('tab', { name: '界面', exact: true }).getAttribute('aria-selected'), 'true',
+        '指针移上去就换了分区');
+      await page.locator(`${PANEL} [data-settings-scroll]`).hover();
+      const home = await top('界面');
+      await page.waitForFunction(([want]) => Math.round(document.querySelector(
+        '#settingsPanel [data-settings-glide]')!.getBoundingClientRect().top) === want, [home]);
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('设置面板的分组是 --ground 圆角面，开关、主题分段与关闭键各是一副尺寸，窄屏下开关不换行', { timeout: 60_000 }, async () => {
+    for (const viewport of [DESKTOP, MOBILE]) {
+      const opened = await openHome(browser, viewport);
+      const { page } = opened;
+      try {
+        await openPanel(page);
+        const ground = await tokenColor(page, PANEL, '--ground');
+        const shown = await page.locator(PANEL).evaluate((panel) => {
+          const box = (node: Element) => {
+            const rect = node.getBoundingClientRect();
+            return [Math.round(rect.width), Math.round(rect.height)];
+          };
+          const group = getComputedStyle(panel.querySelector('[data-setting-group]:not([hidden])')!);
+          const toggles = [...panel.querySelectorAll('[data-setting-group]:not([hidden]) [data-toggle]')];
+          const on = panel.querySelector('#uiSoundsSetting')!, row = on.closest('[data-setting-row]')!;
+          const title = row.querySelector('b')!.getBoundingClientRect(), knob = on.getBoundingClientRect();
+          const close = panel.querySelector('#settingsClose')!;
+          return {
+            group: [group.backgroundColor, group.borderTopLeftRadius],
+            toggles: [...new Set(toggles.map((node) => box(node).join('×')))],
+            toggleOnRow: knob.top < title.bottom && knob.left > title.right,
+            theme: [...panel.querySelectorAll('#themeSetting label')].map((node) => box(node).join('×')),
+            themeIcon: box(panel.querySelector('#themeSetting svg')!).join('×'),
+            close: [box(close).join('×'), getComputedStyle(close).borderTopLeftRadius, getComputedStyle(close).paddingLeft],
+          };
+        });
+        assert.deepEqual(shown.group, [ground, '16px'], `${viewport.name}：分组不是 --ground 的 16px 圆角面`);
+        assert.deepEqual(shown.toggles, ['42×24'], `${viewport.name}：开关不是同一副 42×24`);
+        // 开关只有 42px，跟标题同一行绰绰有余；跟着换行只是白占一行高度。
+        assert.equal(shown.toggleOnRow, true, `${viewport.name}：开关没有留在标题那一行`);
+        assert.deepEqual(shown.theme, ['32×32', '32×32', '32×32'], `${viewport.name}：主题三档不是 32px 的圆`);
+        assert.equal(shown.themeIcon, '16×16');
+        assert.deepEqual(shown.close, ['24×24', '50%', '0px'], `${viewport.name}：关闭键不是 24px 的圆钮`);
+        assert.deepEqual(opened.problems, []);
+      } finally {
+        await opened.close();
+      }
+    }
+  });
+
+  it('侧栏排序的添加行：触发器与「添加」同高 --control-h，「添加」是主按钮，候选用完时触发器给禁止光标', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/', DESKTOP);
+    const { page } = opened;
+    try {
+      const server = await stubServer(page);
+      await page.reload({ waitUntil: 'load' });
+      await settle(page);
+      await openPanel(page);
+      const row = page.locator(`${PANEL} [data-sidebar-add-row]`);
+      await row.scrollIntoViewIfNeeded();
+      const shown = await row.evaluate((node) => {
+        const probe = document.createElement('div');
+        probe.style.height = 'var(--control-h)';
+        node.append(probe);
+        const height = getComputedStyle(probe).height;
+        probe.remove();
+        const primary = document.createElement('button');
+        primary.className = 'geist-button primary';
+        document.body.append(primary);
+        const want = getComputedStyle(primary);
+        const expected = [want.backgroundColor, want.backgroundImage, want.color];
+        primary.remove();
+        const trigger = node.querySelector('[data-sidebar-add-trigger]')!, add = node.querySelector('[data-sidebar-add]')!;
+        const face = getComputedStyle(add);
+        return {
+          height, trigger: getComputedStyle(trigger).height, add: face.height,
+          face: [face.backgroundColor, face.backgroundImage, face.color], expected,
+          cursor: getComputedStyle(trigger).cursor,
+        };
+      });
+      assert.equal(shown.trigger, shown.height, '添加行的触发器没有引用 --control-h');
+      assert.equal(shown.add, shown.height, '「添加」没有引用 --control-h');
+      assert.deepEqual(shown.face, shown.expected, '「添加」没有穿主按钮那一身');
+      assert.equal(shown.cursor, 'pointer');
+
+      /* 一项一项加回去，直到清单里没有可加的入口。 */
+      const add = row.locator('[data-sidebar-add]'), trigger = row.locator('[data-sidebar-add-trigger]');
+      for (let left = 30; left > 0 && await add.isEnabled(); left -= 1) await add.click();
+      assert.equal(await trigger.isDisabled(), true, '全部入口都加回侧栏之后触发器还能点');
+      assert.ok((server.settings.sidebarOrder as string[]).length > ORDER.length, '加回的入口没有写进账本');
+      assert.equal(await trigger.evaluate((node) => getComputedStyle(node).cursor), 'not-allowed',
+        '没有可添加的入口时触发器还是普通光标');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  /* 「关注自动更新」在这台机器上不可用时，开着的那颗开关也被禁：轨道得读成灰的，不能还留着那抹蓝。 */
+  it('开着又被禁的开关是灰轨道加禁止光标，跟开着能点的那颗分得开', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/', DESKTOP);
+    const { page } = opened;
+    try {
+      const server = await stubServer(page);
+      server.schedule.available = false;
+      await page.reload({ waitUntil: 'load' });
+      await settle(page);
+      await openPanel(page, '关注');
+      const blocked = page.locator(`${PANEL} #followScheduleSetting [data-toggle]`);
+      await blocked.and(page.locator(':disabled:checked')).waitFor({ state: 'attached', timeout: 10_000 });
+      const surface = await tokenColor(page, PANEL, '--surface');
+      const face = (node: Element) => {
+        const style = getComputedStyle(node);
+        return { face: style.backgroundColor, knob: getComputedStyle(node, '::before').backgroundImage, cursor: style.cursor };
+      };
+      const grey = await blocked.evaluate(face);
+      const live = await page.locator(`${PANEL} #uiSoundsSetting`).evaluate(face);
+      assert.equal(grey.face, surface, '被禁的开关轨道不是 --surface');
+      assert.equal(grey.cursor, 'not-allowed');
+      assert.notDeepEqual([grey.face, grey.knob], [live.face, live.knob], '被禁的开关和能点的开着那颗长得一样');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('光晕参数块自己让出分组右侧的留白、下边距与设置行同一档；「玻璃原色」那一档只留漂移速度', { timeout: 60_000 }, async () => {
+    for (const viewport of [DESKTOP, MOBILE]) {
+      const opened = await openHome(browser, viewport);
+      const { page } = opened;
+      try {
+        await openPanel(page);
+        const block = page.locator(`${PANEL} [data-glow-setting]`);
+        await block.waitFor({ state: 'visible', timeout: 10_000 });
+        const shown = await block.evaluate((node) => {
+          const group = node.closest('[data-setting-group]')!.getBoundingClientRect(), rect = node.getBoundingClientRect();
+          const row = node.parentElement!.querySelector('[data-setting-row]')!;
+          return {
+            right: Math.round(group.right - rect.right), left: rect.left >= group.left,
+            overflow: node.scrollWidth > node.clientWidth,
+            pad: getComputedStyle(node).paddingBottom, rowPad: getComputedStyle(row).paddingBottom,
+          };
+        });
+        assert.ok(shown.right >= 16 && shown.left, `${viewport.name}：参数块压到了分组的圆角上（右侧只剩 ${shown.right}px）`);
+        assert.equal(shown.overflow, false, `${viewport.name}：参数块被内容顶宽`);
+        assert.equal(shown.pad, shown.rowPad, `${viewport.name}：参数块的下边距和上面每一行不是同一档`);
+
+        await block.locator('[data-glow-preset="native"]').click();
+        await block.locator('[data-glow-native-note]').waitFor({ state: 'visible', timeout: 5_000 });
+        const fields = await block.locator('[data-glow-field]').evaluateAll((nodes) => nodes
+          .filter((node) => node.getClientRects().length > 0).map((node) => (node as HTMLElement).dataset.glowField));
+        assert.deepEqual(fields, ['speed'], `${viewport.name}：「玻璃原色」下还摆着管不着任何东西的拉条`);
+        assert.deepEqual(opened.problems, []);
+      } finally {
+        await opened.close();
+      }
     }
   });
 

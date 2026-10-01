@@ -288,56 +288,6 @@
 </div>
 
 
-<section class="settingspanel" id="settingsPanel" hidden aria-modal="true" role="dialog" aria-labelledby="settingsTitle">
-  <div class="settingscard">
-    <div class="settingshead"><h2 id="settingsTitle">设置</h2><button id="settingsClose" aria-label="关闭设置"><svg viewBox="0 0 24 24"><use href="#i-x"/></svg></button></div>
-    <div class="settingsscroll">
-      
-      <section class="settinggroup"><h3>界面</h3>
-      <div class="settingrow"><span><b>主题</b><small>跟随系统，或固定用浅色、深色。</small></span><div id="themeSetting"></div></div>
-      <label class="settingrow"><span><b>界面音效</b><small id="uiSoundsDescription">按钮、开关、菜单、弹层和操作回执各配一声轻响。</small></span><input class="ptoggle" type="checkbox" id="uiSoundsSetting" role="switch" aria-describedby="uiSoundsDescription"></label>
-      <label class="settingrow"><span><b>侧栏光晕</b><small id="homeGlowDescription">左栏玻璃面上那三枚慢慢漂动的光，其余玻璃面跟着取前两枚的颜色。配色在下面或左栏底部那枚配色钮上挑，强调色在配色钮上挑；这里还调强度、颗粒、漂移速度、柔化、大小和每一枚光晕的颜色。浅色主题按同一组颜色淡一档显示。</small></span><input type="checkbox" id="homeGlowSetting" class="ptoggle" role="switch" aria-describedby="homeGlowDescription"></label>
-      <section class="glowsetting" id="homeGlowControls" aria-label="侧栏光晕参数"></section>
-      <section class="sidebarsetting" aria-labelledby="sidebarOrderTitle"><span><b id="sidebarOrderTitle">左侧导航</b><small>直接拖动排序；可隐藏入口，也可从具体页面列表重新添加。窄栏和筛选抽屉会保持一致。</small></span><div class="sidebarorder" id="sidebarOrderSetting"></div></section>
-      </section>
-      <section class="settinggroup"><h3>浏览</h3>
-      <div class="settingrow"><span><b>每批作品</b><small>首页每次加载的作品数量。</small></span><div id="batchSizeSetting"></div></div>
-      <div class="settingrow settingsortrow"><span><b>默认排序</b><small id="sortDirectionHelp">随机排序不使用方向。</small></span><div class="settingsortcontrols"><div id="defaultSortSetting"></div><div id="defaultSortDirectionSetting" aria-describedby="sortDirectionHelp"></div></div></div>
-      <label class="settingrow"><span><b>合并分卷与版本</b><small>同一番号的多个分卷或版次只占一张卡，展示第一个。</small></span><input type="checkbox" id="groupCollapseSetting" class="ptoggle" role="switch"></label>
-      <div class="settingrow"><span><b>JAV 默认封面</b><small>首页、接着看和 Mix 等位置共用；缺图时使用另一种封面。</small></span><div id="javImageSetting"></div></div>
-      <div class="settingrow settingrelated"><span><b>视频封面默认大小</b><small>首页和 JAV 等视频列表共用；小图展示完整封套，大图展示完整正封。</small></span><div id="javSizeSetting"></div></div>
-      <label class="settingrow"><span><b>新作自动滚动</b><small id="feedAutoScrollDescription">首页和人物页那一行未入库的新作缓缓向前滚，到头停一下再往回；指针移上去或手动滚过时停下。</small></span><input class="ptoggle" type="checkbox" id="feedAutoScrollSetting" role="switch" aria-describedby="feedAutoScrollDescription"></label>
-      <label class="settingrow"><span><b>新作收起大合集</b><small id="feedHideGroupDescription">多人片段拼成的精选、总集和连发不进新作那一行，也不替它们补封面。</small></span><input class="ptoggle" type="checkbox" id="feedHideGroupSetting" role="switch" aria-describedby="feedHideGroupDescription"></label>
-      <label class="settingrow"><span><b>新作收起单人合集</b><small id="feedHideSoloDescription">只有一位女优的精选与长时间合集，比如「8時間 BEST」。</small></span><input class="ptoggle" type="checkbox" id="feedHideSoloSetting" role="switch" aria-describedby="feedHideSoloDescription"></label>
-      <label class="settingrow"><span><b>新作收起切片</b><small id="feedHideExcerptDescription">把出过的正片剪成十几分钟单卖的，比如ハイライト厂牌。</small></span><input class="ptoggle" type="checkbox" id="feedHideExcerptSetting" role="switch" aria-describedby="feedHideExcerptDescription"></label>
-      </section>
-      <section class="settinggroup"><h3>播放</h3>
-      <div class="settingrow"><span><b>悬停放大</b><small>转圈完成后进入放大预览。</small></span><div id="hoverDelaySetting"></div></div>
-      <label class="settingrow"><span><b>打开详情自动播放</b><small id="detailAutoplayDescription">打开本地作品或关注视频详情时开始播放；关闭后点击播放按钮开始。</small></span><input class="ptoggle" type="checkbox" id="detailAutoplaySetting" role="switch" aria-describedby="detailAutoplayDescription"></label>
-      <label class="settingrow"><span><b>小窗播放</b><small id="miniplayerDescription">离开详情时正在播放的视频缩到角落继续播放；小窗开着时点击其他视频直接在小窗里换片。</small></span><input type="checkbox" id="miniplayerSetting" class="ptoggle" role="switch" aria-describedby="miniplayerDescription"></label>
-      <div class="settingrow"><span><b>快进 / 快退</b><small>卡片预览和详情播放器共用。</small></span><div id="seekSecondsSetting"></div></div>
-      <div class="settingrow"><span><b>视频缩略图采集</b><small>拖动进度条时按时间点看画面。精准每 10 秒一张，粗略每 30 秒一张；两小时的片子约 720 / 240 张，占 20–100 / 7–35 MB。只采集本机磁盘上的片子，网盘上的每张都要回源拉一次。</small><small id="videoThumbnailState" aria-live="polite">读取运行状态…</small></span><div id="videoThumbnailSetting"></div></div>
-      <div class="settingrow"><span><b>相关推荐</b><small>详情下方一次显示的相似作品数量。</small></span><div id="relatedLimitSetting"></div></div>
-      </section>
-      <section class="settinggroup"><h3>搜索</h3>
-      <div class="settingrow"><span><b>搜索记录</b><small>保存在 Peach 账本，所有访问端同步。</small></span><div id="searchHistoryLimitSetting"></div></div>
-      </section>
-      <section class="settinggroup"><h3>关注</h3>
-      <div class="settingrow"><span><b>首次采集历史范围</b><small>按发布时间限制新来源首次导入的内容；范围内不足 30 条时补到 30 条。没有日期的条目仍会导入；已有内容不受影响，支持历史分页的来源可手动加载更早。</small><small id="followInitialDaysState" aria-live="polite"></small></span><div id="followInitialDaysSetting"></div></div>
-      <div class="settingrow"><span><b>关注自动更新</b><small id="followScheduleState" aria-live="polite">读取运行状态…</small></span><div id="followScheduleSetting"></div></div>
-      <div class="settingrow"><span><b>头像与站点图标刷新</b><small>创作者头像、来源图标和外链圆标保存在本机，到期后下次显示时重新取一次；视频与图片不保存。</small></span><div id="metadataRefreshSetting"></div></div>
-      </section>
-      <section class="settinggroup"><h3>安全</h3>
-    <label class="settingrow"><span><b>SFW 模式</b><small id="sfwDescription">模糊、降低饱和度并压暗全站图片和视频，包括封面、头像与详情预览；停止悬停预览。文字、品牌标识和来源图标保持可见。</small></span><input class="ptoggle" type="checkbox" id="censorSetting" role="switch" aria-describedby="sfwDescription"></label>
-      </section>
-      <!-- 这台电脑的摘要卡，或别的设备上那一句去哪儿改，见 syncMachineSettings。 -->
-      <section class="settinggroup" id="machineGroup"><h3>这台电脑</h3>
-      <div id="machineSettings"></div>
-      </section>
-    </div>
-  </div>
-</section>
-
 <div id="toasts"></div>
 
 <!-- video.js（676KB）首屏用不上，与 Swiper 同一口径：由 app.js 的 ensureVideojs()

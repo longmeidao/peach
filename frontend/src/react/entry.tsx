@@ -40,12 +40,12 @@ import { ScrapingPage } from './scraping/scraping-page';
 import { prefetchScraping } from './scraping/scraping';
 import { prefetchConfiguration } from './settings/configuration';
 import { ConfigurationPage } from './settings/configuration-page';
-import { ConfigurationSummary } from './settings/configuration-summary';
 import { prefetchStats } from './stats/stats';
 import { StatsPage } from './stats/stats-page';
 import { DEFAULT_WINDOW, prefetchTaste } from './taste/taste';
 import { TastePage } from './taste/taste-page';
 
+export { configureSettingsPanel } from './settings-panel/settings-panel';
 export { configureStage } from './stage/stage';
 export { mountToaster, showToast } from './toaster';
 
@@ -74,10 +74,6 @@ export const pages: Bundle.ReactPages = {
   'catalog-grid': { prefetch: prefetchCatalogGrid, mount: mounter(CatalogGridPage) },
   configuration: {
     prefetch: (_props, signal) => prefetchConfiguration(signal), mount: mounter(ConfigurationPage),
-  },
-  /* 摘要卡读配置页同一份快照：从这里点进配置页时，首屏已经在缓存里。 */
-  'configuration-summary': {
-    prefetch: (_props, signal) => prefetchConfiguration(signal), mount: mounter(ConfigurationSummary),
   },
   /* 首屏等顶上那排读数里自己的几份、两张后台任务卡与整理卡；复核、高清版与链接各读各的。 */
   'data-cleanup': {

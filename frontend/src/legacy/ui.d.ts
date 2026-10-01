@@ -107,3 +107,30 @@ export declare function noteHtml(
     } | null;
   },
 ): string;
+
+/** Geist Switch：2–3 个互斥视图，一组共享 `name` 的 radio。`options` 是 `[值, 名称, 字形?]`，
+ *  `text` 为真时字形后面跟着名称。 */
+export declare function iconSwitchHtml(name: string, legend: string, options: string[][], current: string,
+  switchOptions?: { attr?: string; className?: string; text?: boolean }): string;
+/** 带 `attr` 的那几枚 radio 选中时调 `apply(值)`。 */
+export declare function wireIconSwitch(root: Element | null, attr: string, apply: (value: string) => void): void;
+
+/** 自绘拉条：轨道、滑块与右侧读数。`attr` 原样写在最外层。 */
+export declare function dialSliderHtml(options?: {
+  value?: number; min?: number; max?: number; step?: number; label?: string; suffix?: string;
+  attr?: string; className?: string;
+}): string;
+/** 拖动中每一步走 `onInput`，松手与键盘落键走 `onChange`；`set` 只改显示，不回调。 */
+export declare function wireDialSlider(root: Element, options?: {
+  onInput?: (value: number) => void; onChange?: (value: number) => void; suffix?: string;
+}): { readonly value: number; set(next: number): void };
+
+/** 锚在 `toggle` 旁的菜单：点开、外点与 Escape 收起、全站同一时刻只开一张。
+ *  `hidden`、`aria-expanded` 与退场类由它写，调用方不再管。 */
+export declare function wireAnchoredMenu(mount: Element, toggle: HTMLElement, menu: HTMLElement,
+  options?: { side?: boolean; align?: 'start' | 'end' }): { setOpen(open: boolean): void; isOpen(): boolean };
+/** 收起当前开着的那张锚定菜单；没有就什么都不做。 */
+export declare function closeAnchoredMenu(): void;
+
+/** 会超宽的横向滚动层：两端按滚动位置渐隐，竖向滚轮转成横向，`drag` 为真时可拖。 */
+export declare function wireHorizontalScroller(el: Element | null, options?: { drag?: boolean; fade?: boolean }): unknown;

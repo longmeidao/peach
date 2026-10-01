@@ -84,8 +84,7 @@
   57.14%{transform:translateX(-6px)}
   78.57%{transform:translateX(4px)}
   100%{transform:translateX(0)}}
-:is(input,textarea,select)[aria-invalid="true"],
-.board-number-control:has([aria-invalid="true"]){animation:field-shake var(--board-motion)}
+:is(input,textarea,select)[aria-invalid="true"]{animation:field-shake var(--board-motion)}
 
 /* ── 作品卡共演头像里指到的那一枚抬起来 ──
    叠放头像本来彼此覆盖，指到的一枚抬起并放大，右侧邻座逐枚朝标题方向让开。全程只动

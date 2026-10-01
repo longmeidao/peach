@@ -30,6 +30,7 @@
 @import "./index/index-people.css";
 @import "../player/player.css";
 @import "./stage/stage.css";
+@import "./settings-panel/settings-panel.css";
 
 @source "./";
 @source "../management-skeletons.ts";

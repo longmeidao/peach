@@ -14,7 +14,7 @@
  * 都先自我卸载，`unmountIsland` 也不假设 DOM 还在原处。 */
 export { preferredDirection } from './sort-preferences';
 export { createSettingsStore } from './settings-store';
-export { boundedPreference, mountNumberSetting, syncNumberSetting } from './number-setting';
+export { boundedPreference } from './number-setting';
 export { initBoardControls, syncBoardRange } from './board-controls';
 export { sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './sidebar-groups';
 
@@ -53,7 +53,6 @@ export interface IslandContracts {
   review: ReactBundle.ReviewProps;
   search: ReactBundle.SearchProps;
   configuration: ReactBundle.ConfigurationProps;
-  'configuration-summary': ReactBundle.ConfigurationSummaryProps;
   activity: ReactBundle.ActivityProps;
   stats: ReactBundle.StatsProps;
   taste: ReactBundle.TasteProps;
@@ -87,7 +86,6 @@ const REGISTRY: { [N in IslandName]: Island } = {
   review: { react: 'review' },
   search: { react: 'search' },
   configuration: { react: 'configuration' },
-  'configuration-summary': { react: 'configuration-summary' },
   activity: { react: 'activity' },
   stats: { react: 'stats' },
   taste: { react: 'taste' },
@@ -229,6 +227,19 @@ export function loadStage(host: ReactBundle.StageHost): Promise<ReactBundle.Stag
   return stage;
 }
 export const stageApi = (): ReactBundle.StageApi | null => stageReady;
+
+/* 设置面板岛（`react/settings-panel/`）：同舞台岛一样只交命令式入口。第一次按齿轮时才装载 React 包、
+ * 接上宿主；之后 `settingsPanelApi()` 同步可取，包还没装载时是 null——那时面板必然没开过。 */
+let settingsPanel: Promise<ReactBundle.SettingsPanelApi> | null = null;
+let settingsPanelReady: ReactBundle.SettingsPanelApi | null = null;
+export function loadSettingsPanel(host: ReactBundle.SettingsPanelHost): Promise<ReactBundle.SettingsPanelApi> {
+  settingsPanel ??= import('@peach/react').then((bundle) => {
+    settingsPanelReady = bundle.configureSettingsPanel(host);
+    return settingsPanelReady;
+  });
+  return settingsPanel;
+}
+export const settingsPanelApi = (): ReactBundle.SettingsPanelApi | null => settingsPanelReady;
 
 /* 沉浸模式用到的那几样播放器件（`frontend/src/player/`）：片源、流会话、上报与控件点击都不带模块
  * 状态。详情播放器、宿主与右键菜单带状态，只在舞台岛那一份产物里用。 */

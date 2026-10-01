@@ -5,7 +5,8 @@
     "paths": {
       "@/*": ["../../src/react/boardui/*"],
       "@peach/legacy/core": ["../../src/legacy/core.d.ts"],
-      "@peach/legacy/ui": ["../../src/legacy/ui.d.ts"]
+      "@peach/legacy/ui": ["../../src/legacy/ui.d.ts"],
+      "@peach/legacy/home-glow": ["../../src/legacy/home-glow.d.ts"]
     }
   },
   "include": ["./", "../../src/react"]

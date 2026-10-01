@@ -14,6 +14,8 @@ export default mergeConfig(base, defineConfig({
     alias: {
       '@peach/legacy/core': stub('legacy-core.ts'),
       '@peach/legacy/ui': stub('legacy-ui.ts'),
+      // 纯数据层，没有页面装配，测试里直接用正式实现。
+      '@peach/legacy/home-glow': fileURLToPath(new URL('../web/js/home-glow.js', import.meta.url)),
       // 测试里 island 直接拿到 React 子树的源码入口，不经过 web/dist 产物。
       '@peach/react': source('react/entry.tsx'),
       '@/registry': source('react/evilcharts/registry'),

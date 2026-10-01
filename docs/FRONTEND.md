@@ -125,7 +125,7 @@ URL 都从它来，它被缓存住就没人看得到新产物。
 | `11-identity.css` | 身份组、演员与系列链接、重复项、质量清单、复核对照 |
 | `12-cards.css` | 壳自己画的卡片（垃圾文件、新作）、悬停预览层与密度 |
 | `15-detail.css` | 壳画的源文件管理（定位与目录对账） |
-| `16-settings.css` | 设置面板 |
+| `16-settings.css` | 设置面板打开时的页面锁滚（面板归 `settings-panel` 岛） |
 | `17-overlay.css` | Toast 与审查遮挡 |
 | `18-drawer.css` | 筛选抽屉 |
 | `19-immersive.css` | 沉浸模式 |
@@ -379,7 +379,10 @@ React 页要按原名输出壳才拆得出分区；`swiper`、`swiper-wrapper`�
 `tg` 是目录卡片、索引页与详情共用的标签键（`12-cards.css`）；`mav` 是壳的 `followIdentity` 画的头像；
 `externallink` 是 `01-base.css` 里全站外链的图标间距；`javedition` 与色调（`censored` 等）是目录卡片也用的
 版次徽章；`chip` 是筛选抽屉的药丸键，脱盘与在线说明块里的按钮沿用它；`geist-button`、`primary` 是
-舞台模态里各处按钮共用的遗留按钮。这几个在它们的主人（卡片、沉浸、设置等）归 React 时一起收回。
+舞台模态里各处按钮共用的遗留按钮，设置面板的「添加」「恢复默认」也沿用；`popmenu` 是遗留浮层菜单的盒子，
+`presentMenu`／`dismissMenu` 的开合动效按它起，设置面板的色板弹层与侧栏「添加」菜单都是它；`geist-input`
+是 `01-base.css` 的输入框，设置面板的数值框沿用；`board-glow-grid` 那一格预设球由壳的 `renderGlowPresetGrid`
+画，侧栏配色卡与设置面板共用同一份样式。这几个在它们的主人（卡片、沉浸、浮层菜单、配色卡等）归 React 时一起收回。
 舞台、两座详情共用的格子与队列、小窗的样式在 `frontend/src/react/stage/stage.css`，播放器画面框、
 统计角标与右键菜单在 `frontend/src/player/player.css`，都由 `styles.css` 引入、只认 `data-*`；
 `shadow-dropdown` 是 BoardUI 主题里的 `--shadow-*`，

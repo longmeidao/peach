@@ -710,32 +710,10 @@ class WebUiSourceTests(unittest.TestCase):
         css = stylesheet_source()
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn("--scrim:rgba(0,0,0,.7);", css)
-        self.assertIn("background:var(--scrim);padding:18px;", css)
-        # 详情浮窗的遮罩在舞台岛里，由 `frontend/e2e/design.test.ts` 读计算值。
+        # 设置面板与详情浮窗的遮罩都在岛里，颜色、模糊与进出场由 `frontend/e2e/design.test.ts` 读计算值。
         for source, label in ((css, "app.css"), (board, "board.css")):
             self.assertNotIn("rgba(0,0,0,.7)", source.replace("--scrim:rgba(0,0,0,.7)", ""),
                              f"{label} 里遮罩的值只能来自 --scrim")
-        for name in (".settingspanel", ".settingscard", ".settingshead"):
-            start = css.index(name + "{")
-            rule = css[start:css.index("}", start)]
-            self.assertNotIn("backdrop-filter", rule, f"{name} 不带模糊")
-
-    def test_the_detail_overlay_moves_on_the_same_motion_as_the_settings_dialog(self):
-        """设置弹层的进出场关键帧与时长 token，作品详情浮窗用的是同一组。
-
-        一个缩放着淡进来、另一个直接闪出来的话，读起来像两种东西。遮罩也同一条淡入淡出。
-        进场填充用 `backwards` 不用 `both`：终点帧留下的 `filter:blur(0)` 会另起一个
-        backdrop root，浮窗里任何 `backdrop-filter` 从此只采样得到浮窗自己的内容。
-        退场那条要 `both`，它的终点（透明）不是元素的自然状态。详情浮窗那一半在舞台岛里，
-        由 `frontend/e2e/design.test.ts` 读计算值。
-        """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".settingscard.settingscard{border:0;"
-                      "animation:board-dialog-in var(--board-dialog-motion) backwards}", board)
-        self.assertIn(".settingspanel:not([hidden]){animation:settings-backdrop-in "
-                      ".35s cubic-bezier(.4,0,.2,1) both}", stylesheet_source())
-        self.assertIn(".settingspanel.closing .settingscard.settingscard{"
-                      "animation:board-dialog-out var(--board-dialog-motion) both}", board)
 
     def test_closing_the_detail_overlay_waits_for_its_exit_before_tearing_it_down(self):
         """显式关闭详情的每条路径都先 `stageExit()` 演完退场，再拆解舞台。
@@ -1069,12 +1047,10 @@ class WebUiSourceTests(unittest.TestCase):
         '.chip[aria-pressed="true"]',                     # 抽屉是一整张磨砂近白面
         '.dnav button[aria-pressed="true"]',              # 同上，窄栏的展开态
         '.edge button[aria-pressed="true"]',              # 窄栏填 --ground
-        '.glowpill[aria-pressed="true"]',                 # 色系胶囊站在色板弹层上，弹层填 --ground
         '.popmenu.gselectmenu button[aria-selected="true"]',  # 浮层菜单填 --ground
         '.ib[aria-pressed="true"]',                       # 顶栏填 --ground
         '.managebar button[aria-pressed="true"]',         # 管理导航容器填 --ground
         '.sec.cat-meta .chip[aria-pressed="true"]',       # 抽屉中性类，跟基础 .chip 同一档
-        '.sidebaraddmenu button[aria-selected="true"]',   # 浮层菜单
     )
 
     def test_the_selected_face_is_one_token_that_flips_with_the_theme(self):
@@ -1275,34 +1251,11 @@ class WebUiSourceTests(unittest.TestCase):
         css = re.sub(r"/\*.*?\*/", "", stylesheet_source(), flags=re.S)
         stale = re.findall(r"[^{}\n]*:disabled[^{]*\{[^}]*cursor:default[^}]*\}", css)
         self.assertEqual(stale, [], "禁用规则里不许再写 cursor:default")
-        for selector in (".geist-button:disabled", ".resourceaction:disabled",
-                         ".gselectfield:disabled", ".sidebaradd .sidebaraddfield:disabled"):
+        # 设置面板里侧栏添加行的触发器与被禁的开关由 `frontend/e2e/design.test.ts` 读计算值。
+        for selector in (".geist-button:disabled", ".resourceaction:disabled", ".gselectfield:disabled"):
             start = css.index(selector + "{")
             self.assertIn("cursor:not-allowed", css[start:css.index("}", start)],
                           f"{selector} 要给出禁止光标")
-
-    def test_a_disabled_toggle_reads_grey_even_when_it_is_on(self):
-        """开着又被禁的开关必须是灰的，不能还留着那抹蓝。
-
-        「静默启动」只在「开机后启动 Peach」打开时才有意义，所以后者关着时它拿到
-        `disabled`。可轨道此前照旧是蓝的，只有标签变灰：Toggle 的选择器写成
-        `:is(#censorSetting,#detailAutoplaySetting,.ptoggle)`，而 `:is()` 取的是里面
-        最强那一项的权重——混一个 id 进去，整组就是 (1,1,0)，同文件末尾追加的
-        `.ptoggle:disabled` (0,2,0) 再也压不过 `:checked`。选择器里不许再有 id。
-        """
-        css = stylesheet_source()
-        self.assertNotIn("#censorSetting", css, "Toggle 的样式不靠 id 选中")
-        self.assertNotIn("#detailAutoplaySetting", css, "Toggle 的样式不靠 id 选中")
-        self.assertPageContains(".ptoggle:disabled{background:var(--surface);cursor:not-allowed}")
-        self.assertPageContains(".ptoggle:disabled::after{background:var(--muted)}")
-        self.assertPageContains(".ptoggle:disabled:checked{background:var(--surface)}")
-        # 禁用要写在开态之后，同权重下后写的赢。
-        self.assertLess(css.index(".ptoggle:checked{"), css.index(".ptoggle:disabled{"),
-                        "禁用规则排在开态之后才压得住它")
-        # 两颗用 id 接线的开关也得带上这个类，否则它们一条样式都拿不到。
-        for line in ('class="ptoggle" type="checkbox" id="censorSetting"',
-                     'class="ptoggle" type="checkbox" id="detailAutoplaySetting"'):
-            self.assertPageContains(line)
 
     def test_every_disclosure_title_carries_the_same_chevron(self):
         """折叠标题前面都有一枚 16px chevron，展开转 90°，全站一个写法。
@@ -1482,7 +1435,6 @@ class WebUiSourceTests(unittest.TestCase):
                 (".searchmenu{", "var(--floating-radius)"),
                 (".geist-modal{", "var(--floating-radius)"),
                 (".pickrow{", "var(--control-radius)"),
-                (".settingscard{", "var(--floating-radius)"),
                 (".gselectfield{", "var(--control-radius)"),
         ):
             start = css.index(selector)
@@ -1493,25 +1445,12 @@ class WebUiSourceTests(unittest.TestCase):
     def test_close_actions_share_geist_control_geometry(self):
         css = stylesheet_source()
         # 播放列表那几个弹层没有自己的关闭键：它们穿 Geist Modal，退出走操作条左端的
-        # 取消、Escape 和点遮罩，右上角不再另摆一个叉。舞台的关闭键与队列头按钮的几何由
-        # `frontend/e2e/design.test.ts` 读计算样式。
-        start = css.index(".settingshead button{")
-        rule = css[start:css.index("}", start)]
-        self.assertIn("var(--control-radius)", rule, "设置弹层的关闭键是关闭操作，不是圆形标签")
+        # 取消、Escape 和点遮罩，右上角不摆叉。舞台的关闭键、队列头按钮与设置面板关闭键
+        # （24×24 整圆、padding 0）的几何由 `frontend/e2e/design.test.ts` 读计算样式。
         media_close = css[css.index(".media-circle{"):]
         media_close = media_close[:media_close.index("}")]
         self.assertIn("border-radius:50%", media_close,
                       "全屏媒体关闭钮属于圆形媒体操作，不沿用普通 Dialog 关闭钮")
-        self.assertIn(
-            ".settingshead button:hover{background:var(--hover);color:var(--ink)}", css)
-        # 纯图标按钮要进那条名单——`<button>` 的 UA 样式带 `padding:1px 6px`，24px 的键
-        # 只剩 12px 内容宽，16px 的图标挤到一边，看着就是那个叉没居中。
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".settingscard .settingshead button{", board)
-        icon_only = [line for line in board.splitlines()
-                     if line.startswith(":is(.settingshead button,")]
-        self.assertTrue(icon_only, "设置弹层的关闭键不在纯图标按钮那条名单里")
-        self.assertIn("padding:0", icon_only[0])
 
     def test_an_open_collapse_stops_cropping_what_is_inside_it(self):
         """展开着不动时那道裁边摘掉：高度过渡需要它，展开完就只剩副作用。
@@ -1559,17 +1498,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('<span data-button-group data-split-button data-variant="primary">', taste)
 
     def test_settings_overlay_owns_the_top_fixed_layer(self):
+        """设置面板压在最顶层、开着时页面不滚。遮罩的层级与进出场由 `frontend/e2e/design.test.ts`
+        读计算值，`settings-open` 的挂摘由 `frontend/e2e/settings-panel.test.ts` 守。"""
         self.assertPageContains("--layer-dialog:1000")
-        self.assertPageContains(".settingspanel{position:fixed;z-index:var(--layer-dialog);inset:0;isolation:isolate")
         self.assertPageContains("body.settings-open{overflow:hidden}")
-        self.assertPageContains("document.body.classList.add('settings-open')")
-        self.assertPageContains("document.body.classList.remove('settings-open')")
-
-    def test_settings_dialog_uses_the_evidenced_command_menu_motion(self):
-        self.assertPageContains("animation:settings-dialog-in .35s cubic-bezier(.4,0,.2,1) both")
-        self.assertPageContains("translate3d(0,-40px,0);opacity:0")
-        self.assertPageContains("panel.classList.add('closing')")
-        self.assertPageContains("prefers-reduced-motion: reduce")
 
     def test_ui_sounds_are_one_synthesised_module_behind_one_switch(self):
         """界面音效只有一个来源、一个开关，关着时连 AudioContext 都不建。
@@ -1591,13 +1523,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("if(!enabled)return false;", sounds)
         self.assertNotRegex(sounds, r"exponentialRampToValueAtTime\(\s*0\s*,",
                             "指数斜坡不能落到 0")
-        self.assertPageContains('class="ptoggle" type="checkbox" id="uiSoundsSetting" role="switch" aria-describedby="uiSoundsDescription"')
-        self.assertPageContains('<b>界面音效</b><small id="uiSoundsDescription">')
+        # 开关本身归 `settings-panel` 岛，开关后点按出不出声由 `frontend/e2e/settings-panel.test.ts` 守；
+        # 壳这边只剩 `settingsEffects.uiSounds` 把新值灌进模块，打开那一下补响一声。
         self.assertPageContains("appSettings.uiSounds=appSettings.uiSounds!==false;")
         self.assertCode("setUiSoundsEnabled(appSettings.uiSounds);\nwireUiSounds();")
-        self.assertPageContains("$('#uiSoundsSetting').checked=appSettings.uiSounds;")
-        self.assertPageContains("$('#uiSoundsSetting').onchange=")
-        self.assertPageContains("if(appSettings.uiSounds)playUiSound('toggle-on');")
+        self.assertPageContains(
+            "uiSounds:()=>{setUiSoundsEnabled(appSettings.uiSounds);if(appSettings.uiSounds)playUiSound('toggle-on')},")
         # 回执、菜单、弹层、设置面板各在自己的入口响，点击与开关由 document 上的监听统一发。
         # 表状态的通知三档取音：默认按 warn 分成功与失败，部分来源失败这类提醒是警告。
         self.assertPageContains("playUiSound(sound||(alert?'error':'success'));")
@@ -1606,15 +1537,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(menu.hidden)playUiSound('whoosh');")
         self.assertEqual(self.page.count("playUiSound('pop');"), 2, "formModal 与 confirmModal 各响一声")
         self.assertIn("},{capture:true});", sounds)
-
-    def test_settings_titlebar_owns_the_full_width_above_its_scroll_container(self):
-        self.assertPageContains(".settingsscroll{flex:1;min-height:0;overflow-y:auto;padding:0 20px 20px")
-        self.assertPageContains("padding:0 20px 20px;overscroll-behavior:contain}")
-        self.assertPageContains(".settingshead{z-index:2;display:flex")
-        self.assertPageContains("border-bottom:1px solid var(--field-ring);background:var(--ground)")
-        self.assertCode('<div class="settingscard">\n    <div class="settingshead">')
-        self.assertCode('</div>\n    <div class="settingsscroll">')
-        self.assertPageContains("@media(max-width:600px){.settingsscroll{padding:0 17px 17px}")
 
     def test_sidebar_glide_tracks_layout_and_resets_hover_on_toggle(self):
         self.assertPageContains("const navGlideResize=new ResizeObserver(resizeNavGlide);")
@@ -1695,9 +1617,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("title:STATE_LABELS[key],open:()=>openCatalog(path)")
         self.assertPageContains('syncPageTitle(path);')
         self.assertPageContains('queueMicrotask(()=>{syncHeaderActions();paintListTitle();buildDrawerNavigation();void syncPostSetupTutorial()})')
-        self.assertPageContains("queueMicrotask(()=>$('#settingsClose').focus())")
-        self.assertPageContains('if(settingsReturnFocus&&document.contains(settingsReturnFocus))')
-        self.assertPageContains("if(e.key!=='Tab')return")
+        # 设置面板的焦点（进来落在关闭键、Tab 在面板里转圈、关上后回到齿轮）由
+        # `frontend/e2e/settings-panel.test.ts` 在真浏览器里走一遍。
 
     def test_catalog_state_title_never_leaks_into_other_routes(self):
         self.assertPageContains("!manageSection()&&isCatalogPath(path)?STATE_LABELS[state.state]||'':''")
@@ -1989,7 +1910,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const kind=ROUTE_ENTITIES[path.split('/')[1]],name=path.split('/').slice(2).join('/');")
         self.assertPageContains('showEntityLoading(kind,name);')
         self.assertPageContains('appSettings.detailAutoplay=appSettings.detailAutoplay!==false;')
-        self.assertPageContains('class="ptoggle" type="checkbox" id="detailAutoplaySetting"')
 
     def test_entity_links_have_no_external_arrow(self):
         # `target="_blank"` 已经是外链，箭头只是重复；一排链接里它还会挤掉本就不多的
@@ -2143,8 +2063,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("border-color", rule[:rule.index("}")])
         # 遗留层剩下的调用点，一个都不许再留原生 checkbox 的 accent-color。关注管理与
         # 标签索引页的那几处随整页进了 React，画的是 BoardUI `Checkbox`。
-        for attrs in ("data-pick-playlist=", 'id="groupCollapseSetting"'):
-            self.assertPageContains(attrs)
+        self.assertPageContains("data-pick-playlist=")
         # 单选框仍归原生（`.metadatacandidate` 是 radio，不是同一个控件）。
         self.assertPageLacks(".fsrcmenu input{accent-color")
         self.assertPageLacks(".fpickitem input{accent-color")
@@ -2628,9 +2547,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "if((+appSettings.sortDefaultsVersion||0)<3&&SORT_ALIASES[appSettings.defaultSort]){")
         # 设置里的默认排序与排序条同源：列名中性，方向由列自己的默认值决定。
-        self.assertPageContains("['dur','时长'],['size','体积'],['new','入库时间'],['played','观看时间']")
-        for legacy in ("['long','", "['short','"):
+        panel = self.read_react("settings-panel/settings-panel.tsx")
+        self.assertIn("['dur', '时长'], ['size', '体积'], ['new', '入库时间'], ['played', '观看时间'],", panel)
+        for legacy in ("['long','", "['short','", "['long', '", "['short', '"):
             self.assertPageLacks(legacy, "默认排序只列中性列名，不列把方向写进键名的值")
+            self.assertNotIn(legacy, panel)
 
     def test_horizontal_choice_groups_start_from_the_muted_base_color(self):
         """横排互斥选项的未选中基态是 --muted。
@@ -3045,11 +2966,13 @@ class WebUiSourceTests(unittest.TestCase):
         """iOS 上 `vh` 算的是不减地址栏的「大视口」。
 
         按 90vh 撑出来的面板会顶到地址栏和状态栏底下，上半截被遮住——手机上实测过。
-        `dvh` 跟着当前可见高度走；安全区内边距再把刘海和 Home 指示条让开。
+        `dvh` 跟着当前可见高度走；安全区内边距再把刘海和 Home 指示条让开。面板样式在
+        `settings-panel` 岛自己的样式表里。
         """
-        self.assertPageContains("max-height:min(720px,90dvh)")
-        self.assertPageContains("padding-top:max(18px,env(safe-area-inset-top))")
-        self.assertPageContains("padding-bottom:max(18px,env(safe-area-inset-bottom))")
+        css = self.read_react("settings-panel/settings-panel.css")
+        self.assertIn("max-height:calc(100dvh - 32px)", css)
+        self.assertIn("padding-top:max(18px,env(safe-area-inset-top));"
+                      "padding-bottom:max(18px,env(safe-area-inset-bottom))", css)
 
     def test_links_only_use_underlines_on_hover(self):
         """文字链接允许悬停下划线，默认状态保持清爽。"""
@@ -3196,7 +3119,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("/poster?id=${it.id}&c=4", body)
 
     def test_changing_the_jav_image_preference_repaints_the_open_detail(self):
-        cover_body = self.app_js.split("wireIconSwitch(mount,'data-jav-image-choice',choice=>{", 1)[1].split('});', 1)[0]
+        cover_body = self.app_js.split("  javImage:()=>{", 1)[1].split('  },', 1)[0]
         self.assertIn("repaintDetailPoster();", cover_body)
         self.assertPageContains("function repaintDetailPoster(){stageApi()?.repaintPoster()}")
 
@@ -3285,9 +3208,9 @@ class WebUiSourceTests(unittest.TestCase):
         信息栏 76px、12px 圆角、双层阴影，吸附回角是 transform .5s cubic-bezier(.05,0,0,1)。播放器
         不销毁而是整块搬走，流会话跟着它；显式关闭、换详情和删条目才真的销毁。
         """
-        self.assertPageContains('id="miniplayerSetting"')
+        # 开关在 `settings-panel` 岛的「播放」组，关掉时壳的 `settingsEffects.miniplayer` 收起开着的小窗。
         self.assertPageContains("appSettings.miniplayer=appSettings.miniplayer!==false;")
-        self.assertPageContains("$('#miniplayerSetting').checked=appSettings.miniplayer;")
+        self.assertPageContains("miniplayer:()=>{if(!appSettings.miniplayer)stageApi()?.closeMiniplayer()},")
         self.assertPageContains("--layer-miniplayer:900; --layer-dialog:1000;")
         # 小窗的几何由 `frontend/e2e/design.test.ts` 读计算样式。
         # 播放器搬家而不是销毁：只有显式关闭、换详情和删条目传 miniplayer:false。
@@ -3342,8 +3265,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const ordered=SORTS.filter(([key])=>key!=='seed');")
         self.assertPageContains("return javActive()?[JAV_RELEASE_SORT,...ordered]:ordered;")
         self.assertPageContains("state.sort='seed';state.dir='';state.seed=rollSeed();")
-        self.assertPageContains("['defaultSortSetting','默认排序',[['seed','随机']")
-        self.assertIn('@media(max-width:760px){.settingscard.settingscard .settingsscroll{padding-top:16px}}', board)
         # 浅色那档的两团自带反光是霁蓝配石灰，比深色那档浓一档、也大一圈：底下是一片
         # 近白的页面，照搬深色那组的 10% 白等于什么也看不见。色相由 `--glass-tint-a/b`
         # 给（默认就指回这两枚），浓淡和尺寸留在这一档自己身上。
@@ -3384,8 +3305,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<footer><button type="button" class="geist-button primary" '
                                 'data-library-manage>管理媒体库</button></footer>')
         self.assertPageContains("libraryPicker.querySelector('[data-library-manage]').onclick=()=>{libraryFloating.setOpen(false);openDrawer(false);openConfigurationSection('媒体')};")
-        self.assertPageContains("findIndex(item=>item.title===settingsRequestedSection)")
-        self.assertPageContains("settingsTabs?.select(requested>=0?requested:keep);")
 
     def test_mobile_search_focus_preserves_page_scroll(self):
         self.assertPageContains("$('#searchBtn').onclick=()=>{setNarrowSearchOpen(true);$('#q').focus({preventScroll:true})};")
@@ -3448,16 +3367,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn(".vjs-peach-tooltip", board_css)
         self.assertNotIn(".vjs-volume-tooltip", board_css)
         # 提示本身的配色与字号由 `frontend/e2e/design.test.ts` 读计算样式。
-
-    def test_narrow_settings_keep_the_toggle_on_the_title_row(self):
-        """窄屏那条单列是给 select 留的：148px 的下拉配上标题和说明挤不下。
-
-        开关只有 36px，跟标题同一行绰绰有余，跟着换行只是白占一行高度。
-        """
-        self.assertPageContains(".settingrow{grid-template-columns:1fr;gap:9px}")
-        self.assertPageContains(
-            '.settingrow:has(input[type="checkbox"])'
-            '{grid-template-columns:minmax(0,1fr) auto;gap:12px}')
 
     def test_follow_image_cards_learn_their_ratio_in_quiet_batches(self):
         """图片墙按卡片高度分列，图落地前就要知道比例，否则每张加载完整墙重排。
@@ -3557,12 +3466,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['configuration','配置','folder-cog'],")
         self.assertPageContains("&&(key!=='configuration'||runtimeConfigurable===true));")
         self.assertPageContains("if(runtimeConfigurable&&manageSection())buildManageBar();")
-        # 每次打开都重新问一遍：这一格的答案随「从哪台设备打开」变，缓存下来就会骗人。
-        self.assertPageContains("syncSettingsPanel();void syncMachineSettings();")
-        self.assertPageContains("const runtime=await api('/healthz').catch(()=>null);")
-        self.assertPageContains("if(runtime)runtimeConfigurable=!!runtime.configurable;")
-        self.assertPageContains("await mountIsland('configuration-summary',host,")
-        self.assertPageContains("{label:'在服务端设备修改'}")
+        # 设置面板那一格由 `settings-panel` 岛每次打开时经宿主的 `configurable` 问一遍：
+        # 答案随「从哪台设备打开」变，缓存下来就会骗人。
+        self.assertCode("configurable:()=>api('/healthz')\n"
+                        "    .then(runtime=>{runtimeConfigurable=!!runtime.configurable;return runtimeConfigurable})")
+        self.assertIn("{ label: '在服务端设备修改' }", self.read_react("settings-panel/settings-panel.tsx"))
         self.assertPageContains("const config=document.querySelector('#stats .configpage');")
         # `runtimeConfigurable` 还有第二个用处：馆藏空态按它决定给不给「去配置媒体文件夹」。
         self.assertPageContains("let runtimeConfigurable=null;")
@@ -3577,23 +3485,16 @@ class WebUiSourceTests(unittest.TestCase):
 
         形状照 BoardUI 的设置弹层。它的组件页只写怎么装，间距、字号与颜色未取得，
         小标题用本站自己那一档：13px、`--muted`。
-        分块时整块仍是一个 tablist：方向键在整列上走，小标题写成 presentation。
+        分块时整块仍是一个 tablist：方向键在整列上走，小标题写成 presentation。左栏归
+        `settings-panel` 岛，小标题由 DOM 给，样式表里不写死那句「设置」。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertPageContains("const items=sections.flatMap(section=>section.items);")
-        self.assertPageContains(
-            "caption.className='board-local-nav-caption';caption.setAttribute('role','presentation');")
-        self.assertPageContains("const sections=[{caption:'设置',items:groups.map(item)}];")
+        panel = self.read_react("settings-panel/settings-panel.tsx")
+        self.assertIn('<p data-settings-nav-caption="" role="presentation">设置</p>', panel)
         # 方向键在整列上循环，不在某一段里打转。
-        self.assertPageContains("next=(i+1)%items.length;")
-        self.assertPageContains("next=(i+items.length-1)%items.length;")
-        self.assertIn(".settingscard.settingscard>.board-local-nav .board-local-nav-caption"
-                      "{margin:12px 0 0;font-size:13px;color:var(--muted);padding:4px 8px 8px}", board)
-        self.assertIn(".settingscard.settingscard>.board-local-nav .board-local-nav-caption"
-                      ":first-child{margin-top:0}", board)
-        # 那句写死在样式里的「设置」退役：分块之后它只是其中一块的名字，得由 DOM 给。
+        self.assertIn("next = (index + 1) % count;", panel)
         self.assertNotIn("content:'设置'", board)
-        # 同一个节点会挂在好几条下面，一条一条 toggle 会把前面点亮的又抹掉。
+        # 配置页的左栏：同一个节点会挂在好几条下面，一条一条 toggle 会把前面点亮的又抹掉。
         self.assertPageContains(
             "items.forEach(item=>item.nodes.forEach(node=>node.classList.remove('board-group-active')));")
         self.assertPageContains("items[index].nodes.forEach(node=>node.classList.add('board-group-active'));")
@@ -3638,18 +3539,13 @@ class WebUiSourceTests(unittest.TestCase):
         整列取自 Remix，这是这一排唯一能做到笔画一样粗的办法：Lucide 的描边是 2，
         Remix 的轮廓约 1.2，两家并排时总有一枚比别的重一档。Remix 的线条件
         是靠 `fill` 画出的轮廓不是描边，全站默认的 `stroke:currentColor;fill:none`
-        会让它整枚消失，所以这一列反过来写。
+        会让它整枚消失，所以这一列反过来写；左栏字形的计算值由 `frontend/e2e/design.test.ts` 读。
         """
-        self.assertPageContains(
-            "const SETTINGS_TAB_ICONS={'界面':'ri-palette-line','浏览':'ri-layout-grid-line',"
-            "'播放':'ri-play-circle-line',\n"
-            "  '搜索':'ri-search-line','关注':'ri-rss-line','安全':'ri-shield-check-line',"
-            "'这台电脑':'ri-macbook-line'};")
-        self.assertPageContains("svg.style.fill='currentColor';svg.style.stroke='none';")
         self.assertIn(
-            ".settingscard.settingscard>.board-local-nav button svg"
-            "{width:20px;height:20px;fill:currentColor;stroke:none;flex:none}",
-            (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8"))
+            "['界面', 'ri-palette-line'], ['浏览', 'ri-layout-grid-line'], ['播放', 'ri-play-circle-line'],\n"
+            "  ['搜索', 'ri-search-line'], ['关注', 'ri-rss-line'], ['安全', 'ri-shield-check-line'],\n"
+            "  ['这台电脑', 'ri-macbook-line'],",
+            self.read_react("settings-panel/settings-panel.tsx"))
         self.assertPageContains('<symbol viewBox="0 0 24 24" id="ri-macbook-line">')
 
     def test_the_follow_management_section_is_named_after_the_page_it_opens(self):
@@ -3882,29 +3778,12 @@ class WebUiSourceTests(unittest.TestCase):
 
         触发器是 listbox 入口，穿 `.geist-input` 那身盒子；右边「添加」是这一屏的主动作，
         走 `.geist-button.primary`。写死的 `#181a1d` 在浅色主题下是深色控件配浅色面板，
-        而图标键那条基样式一旦兼管这一行，两个控件就得靠三条规则叠回来。
+        而图标键那条基样式一旦兼管这一行，两个控件就得靠三条规则叠回来。这一行归 `settings-panel`
+        岛：两枚控件的高度、主按钮外观与用完后的禁用态由 `frontend/e2e/design.test.ts` 读计算值。
         """
         self.assertPageContains("--control-h:38px;")
-        self.assertPageContains(
-            "/* 它是 listbox 触发器，不是按钮：穿输入框那身盒子，"
-            "右边的实心档才是这一屏的主动作。 */")
-        self.assertPageContains(
-            ".sidebaradd .sidebaraddfield{display:grid;"
-            "grid-template-columns:auto minmax(0,1fr) auto;width:100%;height:var(--control-h);"
-            "box-sizing:border-box;align-items:center;justify-items:start;gap:9px;padding:0 11px;"
-            "border:1px solid var(--field-ring);border-radius:var(--control-radius);"
-            "background:var(--ground);color:var(--ink);text-align:left;font:inherit;"
-            "cursor:pointer}")
-        self.assertPageContains(
-            ".sidebaradd .sidebaraddfield:hover:not(:disabled){border-color:var(--field-ring-hover)}"
-            ".sidebaradd .sidebaraddfield:disabled{color:var(--muted);cursor:not-allowed}")
-        self.assertPageContains(".sidebaradd .geist-button{height:var(--control-h);padding:0 14px}")
-        self.assertPageContains(
-            ".sidebaradd .sidebaraddmenu button{grid-template-columns:auto minmax(0,1fr);"
-            "width:100%;height:var(--control-h);")
-        self.assertPageContains(".sidebaraddfield svg:last-child{justify-self:end;color:var(--muted)}")
-        self.assertPageContains(
-            '<button type="button" class="geist-button primary" data-sidebar-add')
+        self.assertIn('<button type="button" className="geist-button primary" data-sidebar-add=""',
+                      self.read_react("settings-panel/sidebar-order.tsx"))
         # 「添加」两个字已经把动词说完，前面不挂 plus：判据见
         # docs/reference-snapshots/vercel-geist-button-icons.md。
         self.assertPageLacks("${icon('plus')}<span>添加</span>")
@@ -4665,12 +4544,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".board-glow-ball[data-glow-native]{--glow-chip:conic-gradient"
                       "(from -90deg,var(--glass-native-a) 0 50%,var(--glass-native-b) 50% 100%)}", css)
         self.assertIn(".board-glow-toggle[data-glow-native] .board-glow-mark-glow{", css)
-        # 界面上这一档只留漂移速度：其余几条管不着任何东西，留着就是按了不动的控件。
-        self.assertPageContains("row.hidden=native&&row.dataset.glowField!=='speed');")
-        self.assertPageContains('<p class="glownative" data-glow-native-note hidden>')
-        # `.glowfield` 与 `.glowgroup` 自带 display，不补这一条的话 `hidden` 压根收不走它们：
-        # 拉条照样摆在那里、拖得动，而那一档下它们什么也管不着。
-        self.assertPageContains(".glowfield[hidden],.glowgroup[hidden]{display:none}")
+        # 设置面板里这一档只留漂移速度：其余几条管不着任何东西，留着就是按了不动的控件。
+        # 点这一档后真正看得见的拉条由 `frontend/e2e/design.test.ts` 数。
 
     def test_accent_repoints_the_boardui_ramp_instead_of_recolouring_each_control(self):
         """换强调色就是把 `--color-accent-50…950` 整组指到另一个色相，组件规则一个字不改。
@@ -4796,12 +4671,12 @@ class WebUiSourceTests(unittest.TestCase):
         React 壳要的就是这一份：留在 app.js 里，迁移时同一张预设表、同一套色板和同一段
         规范化会被抄进组件再各自演化，而两份色板差一枚颜色是看不出来的。
         所以那个模块不认识 `appSettings`、`$`、`saveSettings`，`paintHomeGlow` 只写传进来的
-        那枚元素；侧栏那枚配色钮、它的弹层和设置面板的装配仍旧留在 app.js。
+        那枚元素；侧栏那枚配色钮和它的弹层留在 app.js，设置面板的光晕参数区在 `settings-panel`
+        岛里经 `@peach/legacy/home-glow` 读同一个模块。
         """
         self.assertIn("import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, "
-                      "GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, "
-                      "HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, "
-                      "glowPalette, glowPresetName, isNativeGlass, normalizeAccent, "
+                      "HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, "
+                      "glowPalette, isNativeGlass, normalizeAccent, "
                       "normalizeHomeGlow, paintGlassFaces, paintHomeGlow } "
                       "from './js/home-glow.js';", self.app_js)
         for moved in ("const HOME_GLOW_PRESETS=[", "const GLOW_SWATCHES=[", "const ACCENTS=[",
@@ -4835,29 +4710,24 @@ class WebUiSourceTests(unittest.TestCase):
         """当前档名与五条参数归「配色」，三枚光晕归「颜色」，两个组名同一档式样。
 
         这一屏排在「侧栏光晕」那一行下面。两组都带名字才看得出各自管什么；没有名字的那
-        一组会被读成上一行设置的附属控件。
+        一组会被读成上一行设置的附属控件。这一屏归 `settings-panel` 岛（`glow-settings.tsx`）。
         """
-        self.assertPageContains('<b>侧栏光晕</b>')
-        self.assertPageContains('id="homeGlowSetting" class="ptoggle" role="switch"')
-        self.assertPageContains('<section class="glowsetting" id="homeGlowControls"')
-        self.assertCode("function renderHomeGlowSetting(){")
-        self.assertPageContains("renderHomeGlowSetting();")
-        self.assertPageLacks('<h4>场</h4>', "「场」不是这套界面的词")
-        self.assertPageContains('<section class="glowgroup"><h4>配色</h4>')
-        self.assertPageContains('<section class="glowgroup" data-glow-colours><h4>颜色</h4>')
-        self.assertPageContains("glowFieldRowHtml('strength','强度',100)")
-        self.assertPageContains("glowFieldRowHtml('noise','颗粒',60)")
-        self.assertPageContains("glowFieldRowHtml('speed','漂移速度',300)")
-        self.assertPageContains("glowFieldRowHtml('soften','柔化',100)")
-        self.assertPageContains("glowFieldRowHtml('size','大小',100)")
+        glow = self.read_react("settings-panel/glow-settings.tsx")
+        self.assertIn('<ToggleRow id="homeGlowSetting" title="侧栏光晕"',
+                      self.read_react("settings-panel/settings-panel.tsx"))
+        self.assertNotIn('<h4>场</h4>', glow, "「场」不是这套界面的词")
+        self.assertIn('<section data-glow-group=""><h4>配色</h4>', glow)
+        self.assertIn('<section data-glow-group="" data-glow-colours="" hidden={native}><h4>颜色</h4>', glow)
+        self.assertIn("['strength', '强度', 100], ['noise', '颗粒', 60], ['speed', '漂移速度', 300], "
+                      "['soften', '柔化', 100], ['size', '大小', 100],", glow)
         # 「光斑」留给 board.css 里玻璃面自带那两团反光，它是另一件东西；用户在这里配的
         # 三枚一律叫光晕，界面文案和注释都不再混用。
         self.assertPageContains("const GLOW_SPOT_LABELS=['光晕一','光晕二','光晕三'];")
         for stale in ("光斑一", "光斑二", "光斑三", "光斑色"):
             self.assertPageLacks(stale)
-        self.assertPageContains('<button type="button" class="geist-button" data-glow-reset>恢复默认</button>')
+        self.assertIn('data-glow-reset=""', glow)
         # 即时生效，不配「保存」键。
-        self.assertPageLacks('data-glow-save')
+        self.assertNotIn('data-glow-save', glow)
         # 配色的预设色块与侧栏配色卡同一组，由 frontend/e2e/design.test.ts 在浏览器里比对。
         self.assertPageLacks("selectFieldHtml(HOME_GLOW_CHOICES", "配色用预设色块挑，不用下拉")
         self.assertPageLacks('class="glowrange"', "拉条换成自绘的 .dial-slider")
@@ -4872,17 +4742,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const GLOW_SWATCH_FAMILIES=[['all','全部'],['gray','灰'],['red','红'],"
                                 "['yellow','黄'],\n  ['green','绿'],['cyan','青'],['blue','蓝'],"
                                 "['purple','紫'],['brown','棕']];")
-        self.assertPageContains('<div class="glowpalette" role="radiogroup"')
-        self.assertPageContains('<div class="glowpills" role="group" aria-label="色系">')
-        self.assertPageContains('class="glowpill" data-glow-pill="${key}" aria-pressed="${index===0}"')
-        self.assertPageContains('class="glowswatch" role="radio" aria-checked="false" data-glow-swatch="${hex}"')
-        self.assertPageContains('class="glowstopmain" data-glow-stop-toggle aria-haspopup="dialog" aria-expanded="false"')
+        stops = self.read_react("settings-panel/glow-settings.tsx")
+        self.assertIn('<div data-glow-pills="" role="group" aria-label="色系">', stops)
+        self.assertIn('<div data-glow-palette="" role="radiogroup"', stops)
         # 胶囊只管筛，不改值；改值的是色块，且立刻把档名转成自定义。
-        self.assertCode("swatches.forEach(swatch=>{swatch.hidden=family!=='all'"
-                        "&&swatch.dataset.glowFamily!==family});")
-        self.assertCode("glow().preset='custom';")
+        self.assertIn("hidden={family !== 'all' && swatchFamily !== family}", stops)
+        self.assertIn("current.preset = 'custom';", stops)
         # 弹层与页面其它浮层同一套开合，不自己写一份定位。
-        self.assertCode("wireAnchoredMenu(row,toggle,pop);")
+        self.assertIn("wireAnchoredMenu(mount, button, menu);", stops)
         block = self.glow_js.split("const GLOW_SWATCHES=[", 1)[1].split("\n];", 1)[0]
         entries = re.findall(r"\['(\w+)','(.+?)','(#[0-9a-f]{6})'\]", block)
         self.assertGreaterEqual(len(entries), 42, "八个色系打底各六档，再加各档预设带进来的")
@@ -4900,16 +4767,14 @@ class WebUiSourceTests(unittest.TestCase):
         """拖动只改参数、只排一帧重画，落盘留给松手那一下。
 
         每一步都写变量加 saveSettings() 的量过：一次 60 步拖动是 1320 次 setProperty
-        和 60 次 localStorage 写入，全在主线程上。
+        和 60 次 localStorage 写入，全在主线程上。设置面板那一侧「拖动只报 glowFrame、松手才落盘」
+        与「面板 DOM 只建一次」由 `frontend/test/react/settings-panel.test.tsx` 守；壳这边把
+        glowFrame 排成一帧重画。
         """
-        self.assertCode("onInput:value=>{glow()[field]=value;applyHomeGlow()},")
-        # 其余玻璃面跟着走的只有速度，而它只能写在根上：拖动期间不写，松手那一下才铺开。
-        self.assertCode("onChange:()=>{saveSettings();if(field==='speed')applyGlassFaces()}}));")
+        self.assertPageContains("glowFrame:()=>applyHomeGlow(),")
         self.assertCode("glowFrame=requestAnimationFrame(()=>{glowFrame=0;"
                         "paintHomeGlow(glowField,appSettings.homeGlow)});")
         self.assertCode("if(written.get(name)===value)return;")
-        # 面板 DOM 只建一次：重建会把正开着的颜色弹层、焦点和拖动状态一起扔掉。
-        self.assertCode("if(mount.dataset.glowWired!=='true'){")
 
     def test_home_glow_variables_are_written_off_the_root(self):
         """光晕变量写在自己那一层上，不写 <html>。
@@ -5013,38 +4878,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("glowButton.toggleAttribute('data-glow-off',!glow.on);")
         self.assertCode("glowPicker.querySelectorAll('[data-glow-presets],[data-glow-grid]')"
                         ".forEach(node=>node.hidden=!glow.on);")
-        self.assertCode("toggle.onchange=()=>{glow.on=toggle.checked;mount.hidden=!glow.on;"
-                        "saveSettings();applyHomeGlow();applyGlassFaces();syncGlowSidebar()};")
+        # 设置面板那枚开关报 `glow`，壳的 `settingsEffects.glow` 当场把侧栏一起对齐。
+        self.assertPageContains("glow:()=>{applyHomeGlow();applyGlassFaces();syncGlowSidebar()},")
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         # 类名里写死的 display 压得过 [hidden] 那条 UA 规则，收起来要自己说一遍。
         self.assertIn(".board-glow-head[hidden],.board-glow-grid[hidden]{display:none}", board)
         # 收起之后「强调色」成了卡里第一样东西，它那 12px 的上间距一起归零。
         self.assertIn(".board-glow-grid[hidden]+.board-glow-sub{margin-top:0}", board)
 
-    def test_home_glow_parameter_block_cannot_overflow_the_settings_card(self):
-        """参数区右侧必须自己让出设置卡那一圈留白，不靠 overflow 裁掉。
-
-        `.glowsetting` 不是 `.settingrow`，board.css 给普通设置行的 16px 右外边距落不到
-        它身上，于是整块压在分组 16px 的圆角上，读数、色块和「恢复默认」被切掉一截。
-        裁掉不是修好：被切掉的仍然是用户要点的东西。
-        """
-        css = stylesheet_source()
-        rule = css.split(".glowsetting{", 1)[1].split("}", 1)[0]
-        self.assertIn("margin-right:16px", rule, "右侧那 16px 要自己让出来")
-        self.assertNotIn("overflow:hidden", rule, "裁掉不算修好")
-        self.assertIn("min-width:0", rule, "网格列不许被内容顶宽")
-        # 读数是定宽的，定宽列旁边的那一列必须能压缩，否则整行只会往外顶。
-        self.assertIn(".glowfield .dial{flex:1;min-width:0}", css)
-
-    def test_the_glow_block_ends_on_the_same_rhythm_as_the_rows_above_it(self):
-        """这一块的下边距和同一列里每一行的一样。
-
-        竖向节奏整块读 `--glowrow-pad`，只有底下那一个数此前另写了 14px：加上后面那个
-        分区自己的上内边距，「恢复默认」到下一节标题之间比上面每两行之间宽出 10px，
-        同一屏里读得出这一处比别处松。
-        """
-        rule = stylesheet_source().split(".glowsetting{", 1)[1].split("}", 1)[0]
-        self.assertIn("padding:0 10px var(--glowrow-pad) 0", rule)
 
     def test_source_icons_are_visible_in_detail_and_list_badges(self):
         self.assertPageContains(".srcbig svg{stroke:currentColor;fill:none")
@@ -5369,9 +5210,10 @@ class WebUiSourceTests(unittest.TestCase):
         # 触发钮自己那一份要单独放行：它的 click 处理器停的是冒泡，这个监听在捕获阶段，
         # 停不掉——少这一句的话点开的同一下就被关回去了。
         self.assertPageContains("openedMenu=next?{mount,menu,toggle,setOpen}")
-        # 设置那一屏盖住整页，进来第一件事就是收掉还开着的那一个。补在这里而不是逐个
-        # 入口上：设置能从侧栏的钮、弹层底部的「详细设置」和快捷键三处进来。
-        self.assertCode("closeAnchoredMenu();\n    settingsRequestedSection=section;")
+        # 设置那一屏盖住整页，进来第一件事就是收掉还开着的那一个。补在岛的 `open` 里而不是
+        # 逐个入口上：设置能从侧栏的钮、弹层底部的「详细设置」和快捷键三处进来。
+        self.assertIn("closeAnchoredMenu();\n  transition += 1;",
+                      self.read_react("settings-panel/settings-panel.tsx"))
 
     def test_anchored_menu_fits_the_room_it_has_instead_of_covering_its_toggle(self):
         # 资料页的统称菜单挂在标题上，上方只有一条顶栏的距离、下方也未必够高。
@@ -5424,8 +5266,8 @@ class WebUiSourceTests(unittest.TestCase):
         # wireAnchoredMenu 之外自己开合的面板也从同一个口进出；作品详情的标签选择器在岛里调
         # 同一对 presentMenu／dismissMenu，顶栏搜索的 `search` 岛由壳递进这一对。
         self.assertPageContains("present:menu=>presentMenu(menu),\n  dismiss:menu=>dismissMenu(menu),")
-        self.assertPageContains("const closeAddMenu=()=>{if(!addMenu)return;dismissMenu(addMenu);")
-        self.assertPageContains("if(opening)presentMenu(addMenu);else dismissMenu(addMenu);")
+        self.assertIn("if (opening) presentMenu(node); else dismissMenu(node);",
+                      self.read_react("settings-panel/sidebar-order.tsx"))
         self.assertPageLacks("$('#searchMenu').hidden=true")
 
     def test_board_batch_three_aligns_ranks_buttons_and_the_sidebar_switcher(self):
@@ -6356,9 +6198,10 @@ class WebUiSourceTests(unittest.TestCase):
         """
         # 顶栏不出现独立开关，开关在设置面板「安全」组。
         self.assertPageLacks('id="censorBtn"')
-        self.assertPageContains('class="ptoggle" type="checkbox" id="censorSetting" role="switch" aria-describedby="sfwDescription"')
-        self.assertPageContains('<b>SFW 模式</b><small id="sfwDescription">')
-        self.assertPageContains('模糊、降低饱和度并压暗全站图片和视频，包括封面、头像与详情预览；停止悬停预览。文字、品牌标识和来源图标保持可见。')
+        panel = self.read_react("settings-panel/settings-panel.tsx")
+        self.assertIn('<ToggleRow id="censorSetting" title="SFW 模式" describedBy="sfwDescription"', panel)
+        self.assertIn('description="模糊、降低饱和度并压暗全站图片和视频，包括封面、头像与详情预览；停止悬停预览。'
+                      '文字、品牌标识和来源图标保持可见。"', panel)
         self.assertPageLacks('共享屏幕或截图前开启，遮住全站封面与预览图。')
         # 默认关闭：localStorage 记 '1' 才开，没动过的会话一律不遮。
         self.assertPageContains("applyCensor(localStorage.getItem(CENSOR_KEY)==='1')")
@@ -6366,8 +6209,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("body.censor img,body.censor video,body.censor .vjs-poster{\n  filter:blur(30px) saturate(.3) brightness(.6)}")
         # 豁免只给与内容无关的界面小图：品牌标、来源徽章、favicon。
         self.assertPageContains("body.censor .brand .mark,body.censor .src img,body.censor .ficon{filter:none}")
-        # 开关变化写回 localStorage 并撤掉正在飞的悬停预览。
-        self.assertPageContains("$('#censorSetting').onchange=")
+        # 开关变化经宿主的 `setCensored` 写回 localStorage 并撤掉正在飞的悬停预览。
+        self.assertIn("onToggle={(on) => current.setCensored(on)}", panel)
         self.assertPageContains("if(on)releaseHoverPreviews()")
         # 悬停预览三条启动路径（长按轮播、悬停起播、定时器到点）都要被拦。
         self.assertIn("if(selectMode||censorOn())return;armLong()", self.page)
@@ -6410,35 +6253,18 @@ class WebUiSourceTests(unittest.TestCase):
         # 清空回收站：danger 语义色。
         self.assertPageContains('class="batchaction danger" id="emptyTrash"')
         self.assertPageContains("button.danger.danger{")
-        # Geist 菜单：触发器和每个选项都有入口图标，菜单内部滚动；开合动效走 Board 层共用那一份。
-        self.assertPageContains('data-sidebar-add-trigger aria-haspopup="listbox" aria-expanded="false"')
-        self.assertPageContains('role="option" data-sidebar-add-option=')
-        # 弹层盒子走共用的 .popmenu：发丝边、投影和 2px 行距只有一份定义，本页只接管定位。
+        # 弹层盒子走共用的 .popmenu：发丝边、投影和 2px 行距只有一份定义，各处只接管定位。
         # 行距不能省——相邻两项一个悬停一个选中时，两块填充会连成一整条，看不出是两行。
-        self.assertPageContains('<div class="popmenu sidebaraddmenu"')
+        # 设置面板的分组、开关与侧栏添加菜单归 `settings-panel` 岛，计算值由
+        # `frontend/e2e/design.test.ts` 读。
         self.assertPageContains("background:var(--ground);display:grid;gap:2px;")
-        self.assertPageContains(".sidebaraddmenu{position:absolute;z-index:4;left:0;right:0;bottom:calc(100% + 6px);max-height:min(312px,48vh)}")
-        self.assertPageContains("if(e.key==='Escape'){e.preventDefault();closeAddMenu();addTrigger.focus();return}")
-        # 设置分组用框体隔开（用户回执）：每组建卡，分隔线顶格到卡边，
-        # 标题字号与行内边距对齐 Vercel 后台设置卡。
-        self.assertPageContains(".settinggroup{margin:16px 0 0;border:1px solid var(--field-ring);border-radius:var(--floating-radius);")
-        # 层级和首页一致：壳是退到后面的 --page，分组才是浮起来的 --ground 加一条发丝线。
-        # 反过来写（白壳嵌灰块）会让同一套控件在设置里和在首页上读出相反的层级。
-        self.assertPageContains("background:var(--ground);padding:0 16px 12px}")
-        self.assertPageContains("border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--page)}")
         self.assertNotIn("box-shadow:0 8px 32px -12px", self.css, "浮层靠发丝线不靠投影")
-        # 布尔开关是 Geist 中号 Toggle（36×20 轨道 + 17px 圆点），不是原生复选框；
-        # Geist 的 Switch 是分段选择器，别用错控件。
-        self.assertPageContains(".ptoggle{appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;")
-        self.assertPageContains(".ptoggle:checked{background:var(--tungsten)}")
         # 没有直接证据的 command-menu 入场动画与无有效高度约束的复核卡
         # Scroller 不应继续作为「Vercel 对齐」进入产品。
         self.assertPageLacks("animation:panel-in")
         self.assertPageLacks("@keyframes panel-in")
         self.assertPageLacks("wireReviewScrollers")
         self.assertPageLacks("reviewscrollbtns")
-        self.assertPageContains(".settinggroup>h3{margin:0;padding:14px 0 10px;font-size:var(--fs-lg);font-weight:600;color:var(--ink)}")
-        self.assertPageContains(".settinggroup .settingrow{margin:0;padding-left:0;padding-right:0}")
         self.assertCode(
             ".pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{"
             "\n  font-size:var(--fs-3xl);line-height:1.25;letter-spacing:-.01em;font-weight:600}")
@@ -6467,7 +6293,6 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_settings_own_useful_experience_preferences(self):
         self.assertPageContains("const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed'")
-        self.assertPageContains('id="settingsPanel"')
         self.assertPageLacks('id="rotateSetting"')
         self.assertPageContains("appSettings.hoverDelaySeconds")
         self.assertPageContains("appSettings.batchSize")
@@ -6477,48 +6302,40 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("appSettings.relatedLimit")
         self.assertPageContains("appSettings.ambientMode=appSettings.ambientMode!==false")
         self.assertPageContains("appSettings.theaterMode=appSettings.theaterMode===true")
-        self.assertPageContains('id="followScheduleSetting"')
-        self.assertPageContains("api('/api/follow/schedule'")
-        self.assertPageContains('id="sidebarOrderSetting"')
+        # 关注自动更新与侧栏排序两格归 `settings-panel` 岛，写接口与侧栏当场重排由
+        # `frontend/e2e/settings-panel.test.ts` 守。
         self.assertPageContains("appSettings.sidebarOrder")
         self.assertPageContains("if(!appSettings.sidebarOrder.length)appSettings.sidebarOrder=[...DEFAULT_SIDEBAR_ORDER]")
         self.assertPageContains("orderedEdgeIcons()")
-        self.assertPageContains('draggable="true" data-sidebar-row=')
-        # 拖动排序全站一份：侧栏这一列和播放队列都调它，落点判据、减淡和那条插入线
-        # 不各留一套。
+        # 遗留层的拖动排序一份：播放队列调它。设置面板那一列在岛里按 `data-*` 状态自画，
+        # 行会随「添加」长出来，那一份按挂接时的行快照接监听，接不住后来的行。
         self.assertPageContains("export function wireDragReorder(root,{selector,attribute,onMove}={})")
-        self.assertPageContains("wireDragReorder(root,{selector:'[data-sidebar-row]',attribute:'data-sidebar-row',")
         self.assertPageContains("wireDragReorder:(root,options)=>wireDragReorder(root,options),")
         self.assertPageContains("function wireNavigationDrag(root){")
         self.assertPageContains("wireNavigationDrag($('#edge'))")
         self.assertPageContains("wireNavigationDrag($('#drawer').querySelector('.dnav'))")
         self.assertPageContains('data-nav="${k}" draggable="true"')
-        self.assertPageContains("data-sidebar-hide")
-        self.assertPageContains("data-sidebar-add-option")
         self.assertPageLacks("data-sidebar-add-select")
         self.assertPageContains("const OPTIONAL_SIDEBAR_KEYS=['playlists','immerse','stats','review','data-cleanup','trash','follow-manage','quality']")
         self.assertPageContains("if(DIRECT_MANAGE_NAV[k]){openManage(DIRECT_MANAGE_NAV[k]);return}")
-        self.assertPageContains(".settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:clip")
-        self.assertPageContains(".settingsscroll{flex:1;min-height:0;overflow-y:auto")
-        self.assertPageContains(".settingrow .gselect{min-width:148px}")
 
     def test_the_thumbnail_density_is_this_machines_state_not_this_browsers(self):
         """档位跟着服务端走。跑的是这台机器上的一条长任务，从另一台设备打开设置要看到
         的是它正在按什么密度采集，所以这一行既不进 `appSettings` 也不进 localStorage。
-        设置行只写一句状态，不轮询；进度在活动页（任务中心，ADR-0050）。
+        设置行只写一句状态，不轮询；进度在活动页（任务中心，ADR-0050）。这一格归 `settings-panel`
+        岛，档位走 `['thumbnail-jobs']` 查询，保存后回来的状态当场换上由
+        `frontend/e2e/settings-panel.test.ts` 守。
         """
-        self.assertPageContains('id="videoThumbnailSetting"')
-        self.assertPageContains('id="videoThumbnailState" aria-live="polite"')
         self.assertPageLacks("appSettings.videoThumbnailMode")
-        self.assertPageContains("['videoThumbnailSetting','视频缩略图采集',"
-                                "[['off','关闭'],['precise','精准'],['coarse','粗略']],")
-        self.assertPageContains("()=>'off',value=>saveVideoThumbnailMode(value)]")
-        self.assertPageContains("const status=await api('/api/thumbnail-jobs');")
-        self.assertPageContains("api('/api/thumbnail-jobs',{method:'POST',body:JSON.stringify({mode})})")
         self.assertPageLacks("watchVideoThumbnailJob")
+        panel = self.read_react("settings-panel/settings-panel.tsx")
+        self.assertIn("const THUMBNAIL_OPTIONS: readonly Choice[] = [['off', '关闭'], ['precise', '精准'], ['coarse', '粗略']];",
+                      panel)
+        self.assertNotIn("videoThumbnailMode", panel)
+        self.assertNotIn("refetchInterval", self.read_react("settings-panel/settings-data.ts"), "设置行不轮询")
         # 采集只覆盖本机磁盘上的片子，网盘上的每张都要回源拉一次。这一条是功能范围，
         # 说明里必须写出来，否则页面上「视频缩略图采集」读起来是全库。
-        self.assertPageContains("只采集本机磁盘上的片子")
+        self.assertIn("只采集本机磁盘上的片子", panel)
 
     def test_theme_is_a_three_way_choice_that_defaults_to_the_system(self):
         """主题三档：跟随系统、浅色、深色。
@@ -6547,15 +6364,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             '<meta name="theme-color" content="#080A0D" media="(prefers-color-scheme: dark)"'
             ' data-theme-color="dark">')
-        # 面板里的控件复用卡片版式那份模板，只是形状另给。
-        self.assertPageContains('<div id="themeSetting"></div>')
-        self.assertCode(
-            "mount.innerHTML=iconSwitchHtml('theme','主题',THEME_OPTIONS,appSettings.theme,"
-            "{attr:'data-theme-choice',className:'themeswitch'});")
-        self.assertCode(
-            "wireIconSwitch(mount,'data-theme-choice',"
-            "choice=>{appSettings.theme=choice;saveSettings();applyTheme()});")
-        self.assertCode("renderThemeSetting();")
+        # 面板里的控件在 `settings-panel` 岛里，选项由壳递进 `themeOptions`；选完报 `theme`，
+        # 壳当场换上。即时生效与刷新后保持由 `frontend/e2e/settings-panel.test.ts` 守。
+        self.assertPageContains("navCatalog:NAV_CATALOG,themeOptions:THEME_OPTIONS,")
+        self.assertPageContains("theme:()=>applyTheme(),")
 
     def test_first_paint_already_knows_which_theme_was_chosen(self):
         """选择要在第一帧之前生效。
@@ -6572,32 +6384,6 @@ class WebUiSourceTests(unittest.TestCase):
         # 色板不许在这里再写一份：内联脚本一个颜色字面量都不带。
         script = self.page.split("<script>", 1)[1].split("</script>", 1)[0]
         self.assertNotIn("#", script)
-
-    def test_theme_switch_wears_the_measured_vercel_theme_selector(self):
-        """主题选择器是 Geist 里唯一给选中项加环的控件。
-
-        三档的底色和它坐着的面板同色，光靠填充分不出当前是哪一档，所以选中项
-        额外加一圈环——2026-09-04 实测 vercel.com 的 system／light／dark 三枚圆形按钮：
-        外框 32px 高的无填充胶囊加 1px 环，每档 32×32 正圆、图标 16px。
-        未选中不铺填充、悬停只提文字色，这两条由 `.iconswitch` 本体给。
-        """
-        self.assertCode(
-            ".iconswitch.themeswitch{display:inline-flex;flex:none;padding:0;border:0;"
-            "background:transparent;border-radius:var(--pill-radius);"
-            "box-shadow:0 0 0 1px var(--border-15)}")
-        self.assertCode(".iconswitch.themeswitch label{width:32px;height:32px;border-radius:50%}")
-        self.assertCode(
-            ".iconswitch.themeswitch label:has(input:checked){background:var(--ground);"
-            "box-shadow:0 0 0 1px var(--line),0 1px 2px var(--overlay-5)}")
-        self.assertCode(".iconswitch.themeswitch svg{width:16px;height:16px}")
-        # 手机上三枚圆撑到 44px 命中区。
-        self.assertCode(
-            "@media (max-width:760px){.iconswitch.themeswitch label{width:44px;height:44px}}")
-        # 这里只给线：盒子的边距归 board.css 那条带 `!important` 的规则，在这里另写一份
-        # 只会留下一组读着像在生效、其实一个像素也没动的值。
-        self.assertCode(
-            ".settinggroup :is(.settingrow,.glowsetting)+.sidebarsetting"
-            "{border-top:1px solid var(--line-soft)}")
 
     def test_the_search_menu_scrolls_inside_itself(self):
         """七组补全装不进一屏，滚到底不把身后的列表一起翻走。"""
@@ -6811,9 +6597,9 @@ class WebUiSourceTests(unittest.TestCase):
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             # 小窗信息栏、播放器右键菜单、统计面板与队列的尾部省略在 `stage.css` / `player.css`，
             # 标题、来源和标签都是语义文本，不在这份遗留样式表里。顶栏搜索下拉栏里的行
-            # 归 `search.css`，截断的是词、人名和番号，同样是语义文本。
+            # 归 `search.css`，截断的是词、人名和番号，同样是语义文本。设置面板侧栏排序那一行的
+            # 页面名在 `settings-panel.css`，也是语义文本。
             ".pickrowtext b",
-            ".sidebarorderlabel>b",
             ".tastesummary>small",
             ".gselectfield>span",
             ".tg",
@@ -7057,8 +6843,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 配置页每行文件夹的「选择文件夹」弹系统对话框去挑：`folder-search`。`folder-open` 归「打开位置」。
         self.assertPageContains('<symbol id="i-folder-search" viewBox="0 0 24 24">')
         # 设置左栏「这台电脑」指的是运行 Peach 的那台机器，字形是一台笔记本电脑；
-        # 硬盘归「本地」这个来源，不兼任机器本身。
-        self.assertPageContains("'这台电脑':'ri-macbook-line'}")
+        # 硬盘归「本地」这个来源，不兼任机器本身。左栏字形表由
+        # `test_each_settings_tab_takes_its_glyph_from_its_own_name` 读岛里的 `SECTIONS`。
         self.assertIn('href="#i-folder-search"', (Path(__file__).resolve().parents[1] / "frontend" / "src" / "react" / "settings" / "media-settings.tsx")
                       .read_text(encoding="utf-8"))
         # 主题三档各归各的：太阳是浅色、月亮是深色；跟随系统那档说的是「照这台设备走」，
@@ -7074,7 +6860,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<symbol id="i-clapperboard" viewBox="0 0 24 24">')
         # `ri-palette-line` 是「外观」这个意思：设置里的「界面」那一格和侧栏底部那枚配色钮
         # 共用它，两处说的是同一件事。
-        self.assertPageContains("const SETTINGS_TAB_ICONS={'界面':'ri-palette-line'")
         self.assertPageContains('<symbol viewBox="0 0 24 24" id="ri-palette-line">')
         self.assertPageLacks("swatch-book", "换下来的这一枚没有别的使用者，雪碧图里也不留")
         for gone in ("i-monitor-cog", "i-volume-2", "i-sun-moon", "i-building",
@@ -7912,117 +7697,42 @@ class WebUiSourceTests(unittest.TestCase):
         会在这些环境里留着一块动个不停的半透明。
 
         卡片仍旧自己铺 --page：弹层底下压着一层 70% 的黑遮罩，透过去模糊出来的是被压暗的
-        页面，浅色主题下整栏发灰、那一列的字读不出来。
+        页面，浅色主题下整栏发灰、那一列的字读不出来。左栏在 `settings-panel` 岛里是一块
+        `[data-glass-pane]`，料与模糊由 board.css 那一处给，降级三条路写在岛的样式表里。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        glass = next(line for line in board.splitlines()
-                     if line.startswith(".board-filter-frame.board-filter-frame.board-filter-frame,")
-                     and ".drawer.drawer," in line)
-        self.assertIn(".settingscard.settingscard>.board-local-nav", glass)
-        self.assertIn(".settingscard.settingscard{background:var(--page)}", board)
-        self.assertNotIn("backdrop-filter:saturate(1.8) blur(20px)", board,
-                         "左栏不再自己配一份模糊")
+        panel = self.read_react("settings-panel/settings-panel.tsx")
+        css = self.read_react("settings-panel/settings-panel.css")
+        self.assertIn('<div data-settings-nav="" data-glass-pane="" role="tablist"', panel)
+        self.assertIn("body [data-settings-nav]{backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) "
+                      "var(--glass-lume)}", board)
+        self.assertNotIn("backdrop-filter:saturate(1.8) blur(20px)", board + css,
+                         "左栏不自己配一份模糊")
+        nav = "[data-settings-card][data-settings-card][data-settings-card]>[data-settings-nav]"
         for guard in ("@supports not (backdrop-filter:blur(1px))",
-                      "@media(prefers-reduced-transparency:reduce)"):
-            line = next(row for row in board.splitlines() if row.startswith(guard))
-            self.assertIn(".settingscard.settingscard.settingscard>.board-local-nav", line,
+                      "@media (prefers-reduced-transparency:reduce)"):
+            line = next(row for row in css.splitlines() if row.startswith(guard))
+            self.assertIn(nav + "{background:var(--ground);animation:none}", line,
                           f"{guard} 这一路要把左栏一起降级")
-        contrast = next(row for row in board.splitlines()
-                        if row.startswith("html.board-high-contrast .settingscard.settingscard>"))
+        contrast = next(row for row in css.splitlines()
+                        if row.startswith("html[class~=board-high-contrast] [data-settings-panel] [data-settings-card]"
+                                          "[data-settings-card]>[data-settings-nav]"))
         self.assertIn("animation:none", contrast, "高对比下那层漂移的光晕要停")
-
-    def test_the_settings_groups_sit_on_the_same_card_as_the_machine_pages(self):
-        """设置弹层的每组开关行和配置页坐在同一种卡上。
-
-        配置页走 BoardUI `SettingsCard`：灰底、16px 圆角、左内边距 12px，行的分隔线在卡片
-        左沿内收住。设置弹层每一组照这张卡的尺寸画，标题与页底仍是 `--page`；「这台电脑」
-        那张摘要卡也由这一组的灰卡承托。
-        """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".settingscard .settingsscroll>.settinggroup"
-                      "{background:var(--ground);border-radius:16px;padding:0 0 0 12px}", board)
-        self.assertIn(".settingscard.settingscard>.settingshead,"
-                      ".settingscard.settingscard>.settingsscroll{background:var(--page)}", board)
-        self.assertIn(".settingscard .settingsscroll .settingrow{min-height:52px;"
-                      "padding:10px 10px 10px 0;gap:16px;border-top:0;"
-                      "border-bottom:1px solid var(--line-soft)}", board)
-
-    def test_the_settings_title_casts_the_sidebar_shadow_once_the_gap_is_scrolled_away(self):
-        """标题下那道影子跟左栏那块玻璃同一份，滚掉那段留白才点亮。
-
-        那三层各带十几到几十像素的模糊，往上会糊在标题自己头上、往左会糊到左栏那一列
-        上，要的只是往下那一半，所以裁掉另外三边。留白的值只写在 `--settings-gap` 一处，
-        滚动量过了它减 4px 就算两块重合。
-        """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        app = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(encoding="utf-8")
-        self.assertIn(".settingscard .settingshead{position:relative;z-index:2;"
-                      "clip-path:inset(0 0 -96px 0);transition:box-shadow .2s ease-out}", board)
-        self.assertIn(".settingscard.board-settings-scrolled .settingshead"
-                      "{box-shadow:var(--glass-shadow)}", board)
-        # 那段留白长在滚动区的上内边距上，滚掉它就等于两块重合。
-        self.assertIn(".settingscard.settingscard{--settings-gap:16px;", board)
-        self.assertIn(".settingscard.settingscard .settingsscroll"
-                      "{padding:var(--settings-gap) 32px 32px;min-height:0;overflow-y:auto}", board)
-        self.assertIn(".settingscard.settingscard .settingsscroll"
-                      "{padding:var(--settings-gap) 20px 20px;flex:1}", board)
-        # 影子不再是一段从页底色渐隐的带子，两种做法并存就是两道。
-        self.assertNotIn("background:linear-gradient(var(--page),transparent);"
-                         "pointer-events:none;opacity:0", board)
-        self.assertIn("const gap=parseFloat(getComputedStyle(card)"
-                      ".getPropertyValue('--settings-gap'))||0;", app)
-        self.assertIn("card.classList.toggle('board-settings-scrolled',"
-                      "settings.scrollTop>Math.max(gap-4,0));", app)
-
-    def test_the_settings_column_glass_follows_the_pointer_like_the_filter_row(self):
-        """设置弹层左栏那块玻璃跟着指针走，跟筛选条那排药丸是同一条连线。
-
-        一列里只有当前那格铺着面，鼠标停在哪一条得靠字色那一档去读，扫下来分不出自己停在
-        了第几条。指针离开这一列就滑回当前那格；触点没有「悬停」，碰一下就滑过去等于替
-        用户点了一次。
-        """
-        app = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(encoding="utf-8")
-        self.assertIn("buttons.forEach(button=>{button.onpointerenter=event=>{\n"
-                      "    if(event.pointerType!=='touch')syncLocalNavGlide(nav,button,true)}});", app)
-        self.assertIn("nav.onpointerleave=event=>{\n"
-                      "    if(event.pointerType==='touch')return;\n"
-                      "    const current=nav.querySelector('[role=tab][aria-selected=true]');\n"
-                      "    if(current)syncLocalNavGlide(nav,current,true);\n"
-                      "  };", app)
-        # 配置页那一份没有玻璃，连线挂上去也不动任何东西。
-        self.assertIn("if(!nav.closest('.settingscard'))return", app)
 
     def test_the_settings_column_drops_the_top_rim_the_floating_glass_keeps(self):
         """设置弹层左栏不留顶边那道高光：它嵌在卡片里，上边贴的是卡片自己的圆角。
 
         那道高光是给浮在页面上的玻璃打边用的，落在这一栏就是一条白线横在「设置」上面，
-        读起来像卡片被切成了上下两截。其余三面的内描边和落影照旧。
+        读起来像卡片被切成了上下两截。其余三面的内描边和落影照旧。左栏归 `settings-panel` 岛。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".settingscard.settingscard.settingscard>.board-local-nav{\n"
-                      "  box-shadow:inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),"
-                      "inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}", board)
+        self.assertIn("[data-settings-card][data-settings-card][data-settings-card]>[data-settings-nav]"
+                      "{box-shadow:inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),"
+                      "inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}",
+                      self.read_react("settings-panel/settings-panel.css"))
         glass = next(line for line in board.splitlines()
                      if line.startswith("  border:0;box-shadow:inset 0 1px 0 var(--glass-rim),"))
         self.assertIn("var(--glass-shadow)", glass, "浮层那几块玻璃照旧带顶边高光")
-
-    def test_the_settings_drawer_column_marks_the_current_item_with_glass(self):
-        """左栏当前项的填充由一块滑过去的玻璃给，跟抽屉那一列、筛选条那四枚同一套做法。
-
-        两边都铺的话，静止态就是一块不透明的 --picked 压在玻璃上面，切换时只看得见它
-        瞬间换位置，滑动的那块从头到尾被盖住。
-        """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        app = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(encoding="utf-8")
-        self.assertIn(".board-local-nav>.navglide", board, "那块玻璃要吃到 .navglide 的长相")
-        selected = next(line for line in board.splitlines()
-                        if line.startswith(".settingscard.settingscard>.board-local-nav "
-                                           "button[aria-selected=true]{"))
-        self.assertIn("background:none", selected, "当前项自己不铺底")
-        self.assertIn("syncLocalNavGlide(nav,buttons[index],moved)", app,
-                      "切分区时那块玻璃要跟过去")
-        self.assertIn("if(!nav.closest('.settingscard'))return", app,
-                      "管理区那份横排页签不加玻璃")
 
     def test_the_shuffle_key_is_the_accent_tier_among_the_sort_keys_beside_it(self):
         """换一批走强调档：这一排其余的是排序开关，只有它是动作。
@@ -8377,21 +8087,21 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("queueThumbHtml:it=>mixFacePoster(it,'small'),")
 
     def test_jav_image_preference_reaches_cards_mix_and_settings(self):
-        self.assertPageContains('id="javImageSetting"')
+        # 设置面板那一格改完落盘由 `frontend/e2e/settings-panel.test.ts` 守。
         self.assertPageContains("Object.assign(appSettings,normalizeJavPreferences(appSettings));")
         self.assertPageContains("syncJavImages(document,appSettings.javImage);")
         self.assertPageContains("? javArtwork(it,jav?layout:'small',eager)")
 
     def test_jav_cover_source_and_size_are_independent_settings(self):
-        self.assertPageContains('JAV 默认封面')
-        self.assertPageContains('视频封面默认大小')
-        self.assertPageContains("[['cover','官方封面',''],['thumbnail','预览图','']]")
-        self.assertPageContains("JAV_LAYOUTS,cardLayout(),{attr:'data-video-layout',className:'javimageswitch',text:true}")
-        self.assertPageContains('id="javSizeSetting"')
-        self.assertPageContains("wireIconSwitch(size,'data-video-layout',setVideoLayout)")
+        """封面来源与封面大小是两格各管各的：改来源不动大小，改大小不动来源。两格都在
+        `settings-panel` 岛的「浏览」组，大小那一格经宿主的 `setVideoLayout` 写回壳。"""
+        panel = self.read_react("settings-panel/settings-panel.tsx")
+        self.assertIn("[['cover', '官方封面', ''], ['thumbnail', '预览图', '']];", panel)
+        self.assertIn("onChoose={(layout) => current.setVideoLayout(layout)} />", panel)
+        self.assertPageContains("videoLayout:()=>cardLayout(),setVideoLayout,")
         size_body = self.app_js.split('function setJavLayout(value){', 1)[1].split('\n}', 1)[0]
         self.assertNotIn('appSettings.javImage=', size_body)
-        cover_body = self.app_js.split("wireIconSwitch(mount,'data-jav-image-choice',choice=>{", 1)[1].split('});', 1)[0]
+        cover_body = self.app_js.split("  javImage:()=>{", 1)[1].split('  },', 1)[0]
         self.assertNotIn('setJavLayout(', cover_body)
         self.assertNotIn('appSettings.javLayout=', cover_body)
 
@@ -8435,14 +8145,8 @@ class WebUiSourceTests(unittest.TestCase):
                                 "detailReturnBarsContext=null;disposeStage(false);")
 
     def test_settings_sort_pair_and_hover_off(self):
-        self.assertPageContains('class="settingrow settingrelated"')
-        self.assertPageContains('.settingrow.settingrelated{border-top:0}')
+        # 设置面板里排序与方向那一对（随机时方向收起）由 `frontend/e2e/settings-panel.test.ts` 守。
         self.assertPageContains("['rating','评分']")
-        self.assertPageContains("iconSwapHtml('arrow-up','arrow-down','a',")
-        self.assertPageContains("setIconSwap(mark,ascending?'a':'b')")
-        self.assertPageContains('class="settingsortcontrols"')
-        self.assertPageContains("field.disabled=appSettings.defaultSort==='seed'")
-        self.assertPageContains("['hoverDelaySetting','悬停放大',[['0','关闭']")
         self.assertPageContains('boundedPreference(+appSettings.hoverDelaySeconds,0,60,5)')
         self.assertPageContains('if(!appSettings.hoverDelaySeconds)return;')
         self.assertPageContains("if(appSettings.hoverDelaySeconds)setHoverState(el,'longhover',true)")
@@ -8455,11 +8159,8 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains("groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER,")
         self.assertPageContains("appSettings.groupCollapse=appSettings.groupCollapse!==false;")
-        self.assertPageContains('<input type="checkbox" id="groupCollapseSetting" class="ptoggle" role="switch">')
-        self.assertPageContains("$('#groupCollapseSetting').checked=appSettings.groupCollapse;")
-        self.assertPageContains(
-            "$('#groupCollapseSetting').onchange=e=>{appSettings.groupCollapse=!!e.target.checked;"
-            "saveSettings();reloadCurrentSurface()};")
+        # 开关在 `settings-panel` 岛的「浏览」组，只报 `groupCollapse`（vitest 守）；壳那一侧重取。
+        self.assertPageContains("groupCollapse:()=>reloadCurrentSurface(),")
         self.assertEqual(self.page.count("groupCollapse:appSettings.groupCollapse"), 2,
                          "目录与资料页两处网格都要认这个开关")
 
@@ -8765,7 +8466,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('data-review-filter data-glass-pane=""', review)
         self.assertIn("top: calc(var(--topH) + 8px);", styles)
         self.assertIn("position: fixed;", styles)
-        self.assertIn(".settingscard>.board-local-nav,[data-glass-pane]", self.app_js)
+        self.assertIn(".reviewgroupbar,[data-glass-pane]').forEach(attach);", self.app_js)
         self.assertIn("body .peach-react :is([data-review-filter],[data-filter-glass]){backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume)}", board)
         self.assertIn("body .peach-react [data-selection-dock]{backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%)}", board)
         self.assertIn("data-candidate-choice", candidate)
@@ -9208,8 +8909,10 @@ class BoardStyleIsolationTests(unittest.TestCase):
             for token in ("peach.legacy-ui", "original-design"):
                 self.assertNotIn(token, text, f"{path.name} 仍在读第二套界面的开关")
         app = (root / "web/app.js").read_text(encoding="utf-8")
-        self.assertIn("if(!group||document.getElementById('glassContrastSetting'))return;", app)
-        self.assertNotIn("legacyUISetting", app)
+        panel = (root / "frontend/src/react/settings-panel/settings-panel.tsx").read_text(encoding="utf-8")
+        self.assertIn('<input type="checkbox" id="glassContrastSetting" data-toggle="" role="switch"', panel)
+        for source in (app, panel):
+            self.assertNotIn("legacyUISetting", source)
 
     def test_icon_centering_does_not_override_toolbar_visibility(self):
         root = Path(__file__).resolve().parents[1]
@@ -9333,9 +9036,12 @@ class MotionRecipeTests(unittest.TestCase):
 
     def test_error_shake_rides_on_the_existing_red_border(self):
         """抖动叠在已经有的红边上：不新增红字，也不改边框色。"""
-        self.assertPageContains(':is(input,textarea,select)[aria-invalid="true"],\n'
-                                '.board-number-control:has([aria-invalid="true"])'
+        self.assertPageContains(':is(input,textarea,select)[aria-invalid="true"]'
                                 '{animation:field-shake var(--board-motion)}')
+        # 设置面板的数字框是一整格 `[data-number-control]`，抖的是那一格，写在岛自己的样式表里。
+        panel_css = (self.root / "frontend/src/react/settings-panel/settings-panel.css").read_text(encoding="utf-8")
+        self.assertIn('[data-number-control]:has([aria-invalid="true"]){animation:field-shake var(--board-motion)}',
+                      panel_css)
         shake = self.css.split("@keyframes field-shake{", 1)[1].split("}}", 1)[0]
         self.assertNotIn("color", shake, "抖动只走 transform，颜色归原有的错误样式")
         self.assertNotIn("border", shake, "抖动只走 transform，边框归原有的错误样式")
@@ -9411,7 +9117,8 @@ class MotionRecipeTests(unittest.TestCase):
         self.assertNotIn("word-break", motion.split(".revealline", 1)[1])
         # 换了页才揭示一遍；同一页里的每一次重画走的也是这个函数。
         self.assertPageContains("if(label===lastManagePageLabel)return;")
-        self.assertPageContains("if(moved)revealTexts(heading.parentElement,'h2');")
+        panel = (self.root / "frontend/src/react/settings-panel/settings-panel.tsx").read_text(encoding="utf-8")
+        self.assertIn("if (moved && head.current) revealTexts(head.current, 'h2');", panel)
 
     def test_the_new_pop_easing_is_a_token_and_reduced_motion_zeroes_it(self):
         """`animation` 里只能有一条缓动函数：token 已经带着一条，再写第二条整条无效。"""

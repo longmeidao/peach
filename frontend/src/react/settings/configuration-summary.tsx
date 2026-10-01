@@ -2,16 +2,21 @@
  *
  * 设置弹层只放一行一个值、改完就生效的控件；要「保存配置」的多字段表单都在
  * `/configuration`（ADR-0050），这里只读同一份配置快照（`CONFIGURATION_KEY`）。
- * 灰卡由遗留层那一格 `.settinggroup` 画，这里只画卡里的读数与页脚。 */
+ * 灰卡由设置面板那一格 `[data-setting-group]` 画（`../settings-panel/`），这里只画卡里的读数与页脚。 */
 import { useQuery } from '@tanstack/react-query';
 
 import { Button } from '@/components/base/buttons/button';
 
 import { errorMessage } from '../../api';
-import type { ConfigurationData, ConfigurationSummaryProps } from '../bundle';
+import type { ConfigurationData } from '../bundle';
 import { Note } from '../components/note';
 import { CONFIGURATION_KEY, fetchConfiguration } from './configuration';
 import { Fact, FactList, Footer, Stack } from './section';
+
+export interface ConfigurationSummaryProps {
+  /** 关掉设置面板、换到 `/configuration`。整页换成哪一屏归壳。 */
+  openConfiguration(): void;
+}
 
 const updateLine = (data: ConfigurationData) => {
   const updates = data.updates;

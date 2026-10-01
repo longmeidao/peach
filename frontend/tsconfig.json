@@ -23,6 +23,7 @@
     "paths": {
       "@peach/legacy/core": ["./src/legacy/core.d.ts"],
       "@peach/legacy/ui": ["./src/legacy/ui.d.ts"],
+      "@peach/legacy/home-glow": ["./src/legacy/home-glow.d.ts"],
       "@peach/react": ["./src/react/bundle.d.ts"]
     }
   },
