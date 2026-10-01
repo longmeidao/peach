@@ -1722,6 +1722,59 @@ describe('设计决定', () => {
     }
   });
 
+  it('回收站的骨架和落地同一副几何，计数栏在两种主题下都和页面底色分得开', { timeout: 90_000 }, async () => {
+    /* 回收站多是图片与压缩包，骨架照资源卡排：夹具把回收站那一页全换成图片。 */
+    const opened = await openCatalogFixture(browser, (payload, url) => {
+      if (url.searchParams.get('state') !== 'trash') return;
+      for (const [at, item] of payload.items.entries()) {
+        Object.assign(item, { medium: 'image', name: `演示图片-${at}.jpg`, disposal: 'trash' });
+      }
+    });
+    const { page } = opened;
+    const measure = () => page.evaluate(() => {
+      const box = (element: Element | null) => {
+        if (!element) return null;
+        const rect = element.getBoundingClientRect();
+        return [Math.round(rect.top), Math.round(rect.height)];
+      };
+      const lede = document.querySelector<HTMLElement>('#manageLede');
+      const card = document.querySelector('#grid .catalog-skeleton .skeletoncard')
+        || document.querySelector('#grid [data-media-card][data-variant="resource"]');
+      return { lede: lede && !lede.hidden ? box(lede) : null, card: box(card) };
+    });
+    try {
+      const release = await holdApi(page);
+      await page.goto(new URL('/trash', page.url()).href, { waitUntil: 'load' });
+      await page.locator('#grid .catalog-skeleton .skeletoncard').first().waitFor({ timeout: 15_000 });
+      const waiting = await measure();
+      release();
+      await page.locator('#grid [data-media-card][data-variant="resource"]').first().waitFor({ timeout: 15_000 });
+      await settle(page);
+      const landed = await measure();
+      assert.ok(waiting.lede, '回收站骨架期间没有计数栏，读数到了才冒出来把网格往下推');
+      assert.deepEqual(waiting.lede, landed.lede, `计数栏落地时位置或高度跳了：${JSON.stringify({ waiting, landed })}`);
+      assert.deepEqual(waiting.card, landed.card, `回收站首张卡落地时位置或高度跳了：${JSON.stringify({ waiting, landed })}`);
+      const surfaces = await page.evaluate(() => {
+        const root = document.documentElement;
+        const before = root.dataset.theme;
+        const read = (theme: string) => {
+          root.dataset.theme = theme;
+          return [getComputedStyle(document.querySelector('#manageLede')!).backgroundColor,
+            getComputedStyle(document.body).backgroundColor];
+        };
+        const result = { light: read('light'), dark: read('dark') };
+        if (before === undefined) delete root.dataset.theme;
+        else root.dataset.theme = before;
+        return result;
+      });
+      for (const [theme, [lede, ground]] of Object.entries(surfaces)) {
+        assert.notEqual(lede, ground, `${theme} 主题下回收站计数栏和页面同一个底色：${lede}`);
+      }
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('分卷卡不翻卡、悬停走分段预览，叠层纸边和封面同一档圆角', { timeout: 60_000 }, async () => {
     /* 各卷共用同一个番号的封套，翻过去还是那张图。演示库没有分卷，给首张卡挂一个。 */
     const opened = await openCatalogFixture(browser, (payload) => {
