@@ -509,8 +509,7 @@ class WebUiSourceTests(unittest.TestCase):
         """操作条以中性透明灰叠在框体上，与骨架使用同一灰阶。"""
         self.assertPageContains("--page:#FAFAFA;")
         self.assertPageContains("--page:#04060A;")
-        for selector in (".cleanupfieldset", ".fsec",
-                         ".resourcesyncbox"):
+        for selector in (".cleanupfieldset", ".resourcesyncbox"):
             self.assertPageContains(selector + "{", f"{selector} 应有一条自己的规则")
         css = stylesheet_source()
         for name in (".cleanupfieldset>.geist-fieldset-footer", ".resourcesyncfooter"):
@@ -520,22 +519,18 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn("var(--line-soft)", rule, f"{name} 与正文之间是一条发丝线")
 
     def test_the_follow_job_panel_sits_on_the_card_tier_inside_the_section(self):
-        """进度面板是灰面 `.fsec` 里的一张白卡，与查找结果卡同档。
+        """进度面板是灰面分区里的一张白卡，与查找结果卡同档。
 
         它承载的只是一段进度，和查找结果卡一样躺在 `--ground` 的灰面上；透明或
-        同灰会让框只剩一圈边。面板不再与 `.fsec` 同灰，而是 CheckboxCard 那一档：
-        `--field-ring` 发丝边配 primary 的白面。
+        同灰会让框只剩一圈边。面板是 CheckboxCard 那一档：`--field-ring` 发丝边配
+        primary 的白面。分区卡本身归 `follow-manage` 岛（`components/card.tsx`）。
         """
         css = stylesheet_source()
         panel = css[css.index(".followtask{"):]
         panel = panel[:panel.index("}")]
-        section = css[css.index(".fsec{"):]
-        section = section[:section.index("}")]
         self.assertIn("border:1px solid var(--field-ring)", panel, "发丝边跟分区对齐")
         self.assertIn("background:var(--color-background-primary-default)", panel,
                       "进度面板是灰面上的一张白卡")
-        for token in ("border:1px solid var(--field-ring)", "background:var(--ground)"):
-            self.assertIn(token, section, "分区容器是这一档的基准")
         jobs = (Path(__file__).resolve().parents[1] / 'frontend/src/jobs.ts').read_text(encoding='utf-8')
         self.assertIn('<section class="followtask" data-geist-fieldset aria-label="任务进度">', jobs)
 
@@ -1417,13 +1412,11 @@ class WebUiSourceTests(unittest.TestCase):
         WIP、变体类型、最大/最长这些是状态标记，做成整圆就跟真标签抢同一种视觉身份，
         用户会以为可以点。它们改用 `--badge-radius`；按钮和分段器用 `--control-radius`
         （实测 Geist 的 6px）；只有真正的标签、筛选令牌和连续的条保留 `--pill-radius`。
+        关注卡上「另见」那枚的圆角在 `frontend/e2e/follow-source-icons.test.ts` 量。
         """
         css = stylesheet_source()
         self.assertEqual(re.findall(r"border-radius:9{2,}px", css), [],
                          "整圆一律走 --pill-radius，别再写字面值")
-        for selector in (".fbadge{",):
-            rule = css[css.index(selector):css.index("}", css.index(selector))]
-            self.assertIn("var(--badge-radius)", rule, f"{selector} 是状态标记，不是标签")
 
     def test_shared_geist_component_tokens_cover_the_whole_shell(self):
         """全站壳层、浮层和普通操作使用同一组语义 token。"""
@@ -1930,8 +1923,6 @@ class WebUiSourceTests(unittest.TestCase):
         """
         css = stylesheet_source()
         self.assertPageContains('<symbol id="i-external-link"')
-        self.assertPageContains(".externallink{display:inline-flex;align-items:center;"
-                                "gap:2px;min-width:0}")
         self.assertPageContains("svg.externalmark{width:1.15em;height:1.15em;flex:none;"
                                 "align-self:center;")
         self.assertPageContains("stroke:currentColor;fill:none;stroke-width:2;"
@@ -1989,15 +1980,13 @@ class WebUiSourceTests(unittest.TestCase):
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         for rule in (
-            "body a:is(.externallink,[target=_blank])"
-            ":not(:has([data-link-icon])):not(.cardlink){",
-            "body a:is(.externallink,[target=_blank])"
-            ":not(:has([data-link-icon])):not(.cardlink):hover{",
+            "body a[target=_blank]:not(:has([data-link-icon])):not(.cardlink){",
+            "body a[target=_blank]:not(:has([data-link-icon])):not(.cardlink):hover{",
         ):
             self.assertIn(rule, board)
         for weaker in (":not(:has(img)):not(.cardlink){", ":not(:has(img)):hover{",
                        ":not(:has(img,[data-link-icon]))",
-                       "body a:is(.externallink,[target=_blank]):not(.cardlink){"):
+                       "body a[target=_blank]:not(.cardlink){"):
             self.assertNotIn(weaker, board)
 
     def test_the_waiting_filter_frame_is_one_slab_not_two(self):
@@ -3351,7 +3340,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('align-items:center', note)
         self.assertIn('background:color-mix(in srgb,var(--feedback-color) 8%,var(--ground))', note)
         self.assertPageContains('.geist-note.geist-note>p{margin:0;color:inherit;font:inherit;align-self:center}')
-        self.assertIn('body a:is(.externallink,[target=_blank]):not(:has([data-link-icon])):not(.cardlink):hover'
+        self.assertIn('body a[target=_blank]:not(:has([data-link-icon])):not(.cardlink):hover'
                       '{background:transparent;text-decoration:underline;box-shadow:none}', board)
         self.assertIn('.board-link-button:hover{background:transparent;text-decoration:underline;box-shadow:none}', board)
 
@@ -4104,11 +4093,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("""a[href="/follow-manage?tab=add"]""")
         self.assertPageContains("void openFollowManage(true,'add')")
         self.assertPageContains('.emptystate .es-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:8px}')
-
-    def test_follow_author_actions_stay_in_the_heading_row(self):
-        board = (Path(__file__).resolve().parents[1] / 'web/board.css').read_text(encoding='utf-8')
-        self.assertIn('.followmanage .board-follow-list .board-author-actions{width:auto;flex:none}', board)
-        self.assertNotIn('.board-author-actions{width:100%', board)
 
     def test_top_level_highlight_is_exclusive_and_covers_index_pages(self):
         """首页高亮只看 state.state 的话，进管理区和索引页时它仍然亮着，两个入口一起亮。"""
@@ -5269,8 +5253,6 @@ class WebUiSourceTests(unittest.TestCase):
         勾 200ms 从零画出。分区标题行里的视图开关与同排按钮同高，图标与 fbtn 的字形同粗。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".followmanage .fsec:has(.board-follow-selection){padding:0;border-radius:18px;background:var(--ground);overflow:visible}"
-                      ".followmanage .fsec>.board-follow-selection{padding:4px 24px 12px}", board)
         self.assertIn("--color-border-checkbox-default:#d4d4d4;--color-border-checkbox-hover:#a3a3a3", board)
         # 暗档的默认边线比上游亮一档：框底就是卡面色，那 1px 是这个形状唯一的证据。
         self.assertIn("--color-border-checkbox-default:#525252;--color-border-checkbox-hover:#737373", board)
@@ -6148,7 +6130,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 全站按元素类型盖：内容 img / video / videojs 海报层一个不落。
         self.assertCode("body.censor img,body.censor video,body.censor .vjs-poster{\n  filter:blur(30px) saturate(.3) brightness(.6)}")
         # 豁免只给与内容无关的界面小图：品牌标、来源徽章、favicon。
-        self.assertPageContains("body.censor .brand .mark,body.censor .src img,body.censor .ficon{filter:none}")
+        self.assertPageContains(
+            "body.censor .brand .mark,body.censor .src img,body.censor [data-follow-site-icon]{filter:none}")
         # 开关变化经宿主的 `setCensored` 写回 localStorage 并撤掉正在飞的悬停预览。
         self.assertIn("onToggle={(on) => current.setCensored(on)}", panel)
         self.assertPageContains("if(on)releaseHoverPreviews()")

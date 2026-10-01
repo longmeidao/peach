@@ -37,7 +37,7 @@ const realDuration = (value: unknown) => Number(value) > 0;
 const Glyph = ({ name }: { name: string }) => (
   <span className="contents" dangerouslySetInnerHTML={{ __html: icon(name) }} />
 );
-/** 外链那一枚：`externalmark` 的尺寸由全站链接样式给。 */
+/** 外链那一枚：描边由全站 `svg.externalmark` 给，这一页的 18px 尺寸在 `follow-detail.css`。 */
 const EXTERNAL_MARK = icon('external-link', 'externalmark');
 
 export function FollowDetailPage(props: FollowDetailProps) {
@@ -314,13 +314,13 @@ function Side({ item, data, context, media, write, issue, helpers, actions }: {
           <div data-stage-title="" data-follow-detail-name="" data-reveal-line=""
             dangerouslySetInnerHTML={{ __html: followTitleMarks(single, item) + esc(item.title) }} />
           {item.url ? (
-            <a className="externallink" data-follow-origin="" href={item.url} target="_blank" rel="noreferrer noopener"
+            <a data-follow-origin="" href={item.url} target="_blank" rel="noreferrer noopener"
               title="打开来源页面" aria-label="打开来源页面"
               dangerouslySetInnerHTML={{ __html: EXTERNAL_MARK }} />
           ) : null}
         </div>
         <div data-follow-detail-identity="">
-          <span className="mav" data-follow-source-avatar="" dangerouslySetInnerHTML={{ __html: identity.avatar }} />
+          <span data-follow-source-avatar="" dangerouslySetInnerHTML={{ __html: identity.avatar }} />
           <div>
             <b>{identity.author}</b>
             {postedBy ? <span>发布者 {postedBy}</span> : null}
@@ -345,7 +345,7 @@ function Side({ item, data, context, media, write, issue, helpers, actions }: {
         {item.resource_urls?.length ? (
           <div data-follow-resources="">
             {item.resource_urls.map((url) => (
-              <a key={url} className="externallink" href={url} target="_blank" rel="noreferrer noopener">
+              <a key={url} href={url} target="_blank" rel="noreferrer noopener">
                 {resourceLabel(url)}<span className="contents" dangerouslySetInnerHTML={{ __html: EXTERNAL_MARK }} />
               </a>
             ))}
@@ -397,7 +397,7 @@ function Side({ item, data, context, media, write, issue, helpers, actions }: {
         {tags.length ? (
           <div data-stage-tags="" data-follow-detail-tags="">
             {tags.map((tag) => (
-              <button type="button" key={tag} className="tg" data-tag-cat={tagCategory(item, tag)} data-follow-tag={tag}
+              <button type="button" key={tag} data-tag-cat={tagCategory(item, tag)} data-follow-tag={tag}
                 onClick={() => actions.openTag(tag)}>{helpers.tagLabel(tag)}</button>
             ))}
           </div>

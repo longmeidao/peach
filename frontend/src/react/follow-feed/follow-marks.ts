@@ -2,7 +2,10 @@
  *
  * 都是拼好的 HTML 串，卡片与详情用 `dangerouslySetInnerHTML` 摆进去。图取不到时的回落由壳的
  * `wireImageFallbacks()` 委托监听按 `data-drop` 系列属性接手（`web/js/image-fallback.js`），
- * 这里只写属性。创作者名、首字母与头像的取舍和关注管理页是同一份（`follow-manage.ts`）。 */
+ * 这里只写属性。创作者名、首字母与头像的取舍和关注管理页是同一份（`follow-manage.ts`）。
+ *
+ * 站点图标、版本字样与另见徽章按 `data-follow-*` 认，样式在 `follow-feed.css`。创作者圆框仍挂
+ * `favatar`：图坏了时回落脚本按 `data-drop-class` 换上一枚只带类名的首字母，接不住属性。 */
 import { api, esc } from '@peach/legacy/core';
 
 import {
@@ -19,7 +22,7 @@ const aliasesOf = (context: FollowContext) => context.aliases as readonly AliasG
 export function sourceIcon(provider: string, label = ''): string {
   const url = sourceIconUrl(provider);
   return url
-    ? `<img class="ficon" src="${url}" alt="${esc(label)}"${label ? ` title="${esc(label)}"` : ''} loading="lazy" data-drop="self">`
+    ? `<img data-follow-site-icon="" src="${url}" alt="${esc(label)}"${label ? ` title="${esc(label)}"` : ''} loading="lazy" data-drop="self">`
     : '';
 }
 
@@ -62,13 +65,15 @@ export function followIdentity(item: FollowItem, authorSources: readonly FollowS
  *  配音版着色、无声版弱化加虚线框。 */
 export function followTitleMarks(group: FollowGroup, shown: FollowItem = group.primary): string {
   const marks: string[] = [];
-  if (group.primary.variant_kind === 'wip') marks.push('<small class="javedition followmark wip">WIP</small>');
-  else if (group.has_wip) marks.push('<small class="javedition followmark wip partial">含 WIP</small>');
+  const mark = (edition: string, label: string) =>
+    `<small class="javedition" data-follow-edition="${edition}">${label}</small>`;
+  if (group.primary.variant_kind === 'wip') marks.push(mark('wip', 'WIP'));
+  else if (group.has_wip) marks.push(mark('has-wip', '含 WIP'));
   const version = text(group.primary.version);
-  if (version) marks.push(`<small class="javedition followmark ver">${esc(version)}</small>`);
+  if (version) marks.push(mark('version', esc(version)));
   const audio = text(shown.audio);
   const label = audio === 'voiced' ? '配音版' : audio === 'silent' ? '无声版' : '';
-  if (label) marks.push(`<small class="javedition followmark ${audio}">${label}</small>`);
+  if (label) marks.push(mark(audio, label));
   return marks.join('');
 }
 
@@ -80,7 +85,7 @@ export function followBadges(group: FollowGroup, shown: FollowItem = group.prima
     .map((member) => [member.provider, member.provider_label || member.provider] as const));
   if (!sites.size) return '';
   const marks = [...sites].map(([provider, label]) => sourceIcon(provider, label) || `<span>${esc(label)}</span>`).join('');
-  return `<span class="fbadge dup" title="另见 ${esc([...sites.values()].join('、'))}">另见 ${marks}</span>`;
+  return `<span data-follow-seealso="" title="另见 ${esc([...sites.values()].join('、'))}">另见 ${marks}</span>`;
 }
 
 /** 「媒体未取得」那一句，没有就是空串。 */

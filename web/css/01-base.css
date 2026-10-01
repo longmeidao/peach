@@ -326,10 +326,9 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
    紧跟文字 2px、与文字行居中、颜色就是链接自己的 currentColor
    （docs/reference-snapshots/vercel-geist-external-link-mark.md）。尺寸不是全站一个常数，
    而是相对所在文字抬一档，16/14≈1.15em，所以 12px 小字旁边它也跟着小、比例不变。
-   全站只有这两条，页面各自不再调档：这一枚每次说的都是同一件事，尺寸和间距按页面
+   全站只有这一条，页面各自不再调档：这一枚每次说的都是同一件事，尺寸和间距按页面
    分档的话，同一个意思就有八个长相，并排放着像是八种不同的标。
-   间距只由 .externallink 的 gap 说：挂在标自己身上会和容器的 gap 叠起来。 */
-.externallink{display:inline-flex;align-items:center;gap:2px;min-width:0}
+   间距只由所在链接的 gap 说：挂在标自己身上会和容器的 gap 叠起来。 */
 svg.externalmark{width:1.15em;height:1.15em;flex:none;align-self:center;
   stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .geist-button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}

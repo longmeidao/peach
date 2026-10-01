@@ -3003,11 +3003,6 @@ class FollowWebSourceTests(unittest.TestCase):
         横跨整个显示器。骨架照这个宽度画，换页时不会先宽一下再收回去。
         """
         page = self.page
-        rule = page[page.index(".followmanage{"):]
-        rule = rule[:rule.index("}")]
-        self.assertIn("width:min(812px,100%)", rule)
-        self.assertIn("margin-left:auto;margin-right:auto", rule)
-        self.assertNotIn("grid-template-columns", rule)
         self.assertNotIn("faside", page)
         # 标题与说明跟内容列同宽，否则标题悬空在更宽的位置上。
         self.assertPageContains(
@@ -3027,15 +3022,9 @@ class FollowWebSourceTests(unittest.TestCase):
 
         把两者混为一谈就会做成没有可读性的裸列表——而同一份文档明确警告过不要
         因为躲开那些默认套路就做出一个无设计的模板。所以：分区有框，框里的行
-        只用分隔线。
+        只用分隔线。分区的框是 `follow-manage` 岛的填充卡（`components/card.tsx`）。
         """
         page = self.page
-        section = page[page.index(".fsec{"):]
-        section = section[:section.index("}")]
-        self.assertIn("border:1px solid", section)
-        self.assertIn("border-radius", section)
-        self.assertIn("background:var(--ground)", section)
-
         self.assertNotIn(".fcard{", page)
         self.assertNotIn(".fsource{", page,
                          "旧来源卡片规则会给新行重新套上边框和圆角")
@@ -3055,8 +3044,8 @@ class FollowWebSourceTests(unittest.TestCase):
         token，且一个字面像素都不留」。
         """
         page = self.page
-        # 查找结果现在属于同一个管理分区，所以字号检查也要覆盖这一段，直到关注页脚。
-        block = page[page.index("/* ── 关注管理页 ──"):page.index("/* 关注页底部")]
+        # 管理区共用的反馈控件一段，到链接管理骨架为止（骨架的大数读数另有一档）。
+        block = page[page.index("/* ── 关注一族与管理区共用的反馈控件 ──"):page.index("/* 链接管理骨架的概览格")]
         self.assertEqual(re.findall(r"font-size:[\d.]+px", block), [],
                          "面板里不该再有写死的字号")
         steps = sorted({m for m in re.findall(r"font-size:var\(--fs-([a-z0-9]+)\)", block)})
@@ -3400,15 +3389,6 @@ class FollowWebSourceTests(unittest.TestCase):
             self.assertIsNone(web_follow._avatar_url(provider, ref),
                               f"{provider} 没有实测过的头像来源，不该猜一个")
 
-    def test_wip_badge_describes_this_item_not_its_siblings(self):
-        """`2B Camp [4K]` 判的是 alt，只因为同组还有一条 `[WIP]` 就挂上 WIP。
-
-        `has_wip` 是组属性（`any(item.variant_kind == "wip" for item in self.variants)`），
-        角标却贴在主条目标题旁边，读起来就是「这一条是半成品」。哪一条挂哪枚字样由
-        `frontend/test/react/follow-marks.test.ts` 量；这里只管「含 WIP」弱化的那一笔样式。
-        """
-        self.assertPageContains(".javedition.followmark.wip.partial{color:var(--muted)}")
-
     def test_only_actionable_media_failures_enter_the_information_stream(self):
         # 能动手的那两句（缺 F95 会话时分「部分」与「全部」）由 `follow-marks.test.ts` 量。
         self.assertPageLacks("已显示可读取附件；F95 登录会话已保存")
@@ -3420,8 +3400,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("text-decoration:none")
 
     def test_follow_styles_exist_for_the_card_surface(self):
-        for selector in (".followlist{", ".fbadge{"):
-            self.assertPageContains(selector)
+        # 卡片本身的样式归 `follow-feed` 岛；壳里只剩进页骨架那面墙。
+        self.assertPageContains(".followlist{")
 
     def test_follow_puts_the_media_buttons_at_the_top_row_left_behind_a_separator(self):
         """媒体类型在上排最左，隔一道竖线才是状态——跟资料页那条同一个次序。

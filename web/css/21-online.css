@@ -2,28 +2,17 @@
 .follow{padding:4px 0 42px}
 .followhead{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:20px}
 .followhead .pagetitle{margin:0}
-/* 以上与下面 `.followauthors`、`.followlist`、照片墙档位只剩进页骨架在用；页面本身归
-   `follow-feed` 岛（`frontend/src/react/follow-feed/follow-feed.css`），详情归 `follow-detail` 岛
-   （`frontend/src/react/follow-detail/follow-detail.css`）。 */
+/* 这个文件只剩进页骨架（`followContentSkeletonHtml`）在用；页面本身归 `follow-feed` 岛
+   （`frontend/src/react/follow-feed/follow-feed.css`，卡上的站点图标、版本字样与另见徽章也在那里），
+   详情归 `follow-detail` 岛（`frontend/src/react/follow-detail/follow-detail.css`）。 */
 .followauthors{padding:3px 0 10px;margin:0 0 2px;overscroll-behavior-inline:contain}
 .followauthors .av{width:76px}
-.ficon{width:14px;height:14px;border-radius:var(--badge-radius);object-fit:contain;
-  vertical-align:-2px;margin-right:5px}
 .followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr))}
 .followlist.followphotowall{grid-template-columns:repeat(5,minmax(0,1fr));gap:14px 10px;align-items:start}
 /* 固定比例视图的媒体框在懒加载前占好高度。 */
 @media (max-width:1400px){.followlist.followphotowall{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media (max-width:1000px){.followlist.followphotowall{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .followphotowall[data-images-only="true"] .skeletoncard :is(b,em){display:none}
-/* 标题前的版本字样。「含 WIP」说的是同组里还有一条半成品，这一条本身不是，配色弱于
-   WIP 本体。配音版着色带底，无声版弱化加虚线框。 */
-.javedition.followmark{margin-right:6px;color:var(--ink-2)}
-.javedition.followmark.wip{color:var(--meter)}
-.javedition.followmark.wip.partial{color:var(--muted)}
-.javedition.followmark.voiced{color:var(--keep);background:color-mix(in srgb,var(--keep) 16%,transparent)}
-.javedition.followmark.silent{color:var(--muted);border-style:dashed}
-.fbadge{padding:2px 8px;border:1px solid var(--border-15);border-radius:var(--badge-radius);font-size:var(--fs-xs);color:var(--ink-2)}
-.fbadge.dup{border-style:dashed;display:inline-flex;align-items:center;gap:4px}.fbadge.dup .ficon{margin:0}
 @media (max-width:640px){.followhead{align-items:center}
   .followauthors{margin-right:-12px;padding-top:3px}
   .followlist.followphotowall{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 8px}

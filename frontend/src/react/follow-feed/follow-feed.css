@@ -450,6 +450,35 @@
   white-space: nowrap;
 }
 .peach-react [data-follow-badges] { display: flex; flex-wrap: nowrap; gap: 5px; min-width: 0; overflow: hidden; }
+/* 卡片、两排与详情共用的几处字样，HTML 由 `follow-marks.ts` 拼。站点图标在角标、来源条那几格里
+   另有尺寸，这里是行内默认的那一档。SFW 模式下它不跟着内容图一起糊，豁免写在 `17-overlay.css`。 */
+.peach-react [data-follow-site-icon] {
+  width: 14px;
+  height: 14px;
+  margin-right: 5px;
+  border-radius: var(--badge-radius);
+  object-fit: contain;
+  vertical-align: -2px;
+}
+/* 标题前的版本字样，盒子是版次字样那一枚（`.javedition`）。「含 WIP」说的是同组还有一条半成品，
+   这一条本身不是，配色弱于 WIP 本体。配音版着色带底，无声版弱化加虚线框。 */
+.peach-react [data-follow-edition] { margin-right: 6px; color: var(--ink-2); }
+.peach-react [data-follow-edition="wip"] { color: var(--meter); }
+.peach-react [data-follow-edition="has-wip"] { color: var(--muted); }
+.peach-react [data-follow-edition="voiced"] { color: var(--keep); background: color-mix(in srgb, var(--keep) 16%, transparent); }
+.peach-react [data-follow-edition="silent"] { color: var(--muted); border-style: dashed; }
+/* 「另见」是状态标记，不是标签：`--badge-radius`，虚线框，站名落在图标的 alt 上。 */
+.peach-react [data-follow-seealso] {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px dashed var(--border-15);
+  border-radius: var(--badge-radius);
+  color: var(--ink-2);
+  font-size: var(--fs-xs);
+}
+.peach-react [data-follow-seealso] [data-follow-site-icon] { margin: 0; }
 /* 卡上的标签：线与底取类型色，没记类型的按 general 那一档蓝。 */
 .peach-react [data-follow-item] [data-media-tag] {
   --tag-color: #55a7ff;

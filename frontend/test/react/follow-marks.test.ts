@@ -24,8 +24,8 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() });
 describe('来源图标', () => {
   it('登记过的站出本机那枚图，取不到就撤掉；没登记的站是空串', () => {
     expect(sourceIcon('kemono')).toBe(
-      '<img class="ficon" src="/source-icon?provider=kemono" alt="" loading="lazy" data-drop="self">');
-    expect(sourceIcon('f95zone', 'F95 <zone>')).toBe('<img class="ficon" src="/source-icon?provider=f95zone" '
+      '<img data-follow-site-icon="" src="/source-icon?provider=kemono" alt="" loading="lazy" data-drop="self">');
+    expect(sourceIcon('f95zone', 'F95 <zone>')).toBe('<img data-follow-site-icon="" src="/source-icon?provider=f95zone" '
       + 'alt="F95 &lt;zone&gt;" title="F95 &lt;zone&gt;" loading="lazy" data-drop="self">');
     expect(sourceIcon('nowhere', '某站')).toBe('');
   });
@@ -73,13 +73,14 @@ describe('创作者', () => {
 describe('标题前后的字样', () => {
   it('WIP 说这一条，同组有 WIP 说「含」；版本与声音版本各一枚', () => {
     expect(followTitleMarks(group(item(1, { variant_kind: 'wip' })))).toBe(
-      '<small class="javedition followmark wip">WIP</small>');
+      '<small class="javedition" data-follow-edition="wip">WIP</small>');
     const shown = item(2, { audio: 'voiced' });
     expect(followTitleMarks(group(item(1, { version: 'v<2>' }), { has_wip: true }), shown)).toBe(
-      '<small class="javedition followmark wip partial">含 WIP</small>'
-      + '<small class="javedition followmark ver">v&lt;2&gt;</small>'
-      + '<small class="javedition followmark voiced">配音版</small>');
-    expect(followTitleMarks(group(item(1)), item(3, { audio: 'silent' }))).toContain('followmark silent">无声版');
+      '<small class="javedition" data-follow-edition="has-wip">含 WIP</small>'
+      + '<small class="javedition" data-follow-edition="version">v&lt;2&gt;</small>'
+      + '<small class="javedition" data-follow-edition="voiced">配音版</small>');
+    expect(followTitleMarks(group(item(1)), item(3, { audio: 'silent' })))
+      .toContain('data-follow-edition="silent">无声版');
     expect(followTitleMarks(group(item(1)))).toBe('');
   });
 
@@ -88,8 +89,8 @@ describe('标题前后的字样', () => {
     const mirror = item(2);
     const forum = item(3, { provider: 'somewhere', provider_label: '某论坛' });
     const badges = followBadges(group(primary, { duplicates: [mirror, forum] }), primary);
-    expect(badges).toBe('<span class="fbadge dup" title="另见 Kemono、某论坛">另见 '
-      + '<img class="ficon" src="/source-icon?provider=kemono" alt="Kemono" title="Kemono" loading="lazy" data-drop="self">'
+    expect(badges).toBe('<span data-follow-seealso="" title="另见 Kemono、某论坛">另见 '
+      + '<img data-follow-site-icon="" src="/source-icon?provider=kemono" alt="Kemono" title="Kemono" loading="lazy" data-drop="self">'
       + '<span>某论坛</span></span>');
     expect(followBadges(group(primary, { duplicates: [mirror] }), mirror)).toContain('另见 Patreon');
     expect(followBadges(group(primary))).toBe('');

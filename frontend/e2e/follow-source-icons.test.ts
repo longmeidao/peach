@@ -1,7 +1,7 @@
 /* 关注里「这一条出自哪个站」一律用站点图标表示，站名只落在图标的 alt／title 上。
  *
  * 守两处：详情下方视频合集的队列卡（出处图标、标记与时间同一行居中），以及卡片上的
- * 「另见」徽章。演示库没有关注来源，这里按 `_group_payload`（`src/peach/web_follow.py`）
+ * 「另见」徽章（连同版本字样的状态标记外观）。演示库没有关注来源，这里按 `_group_payload`（`src/peach/web_follow.py`）
  * 造一组跨站的同一条：主条目在 Fanbox，另两条在 Rule34.xxx。 */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
@@ -138,9 +138,9 @@ describe('关注的出处用站点图标', () => {
   });
 
   it('卡片的「另见」徽章：另一站按图标列出，站名不写成文字', { timeout: 60_000 }, async () => {
-    const opened = await openFollow(browser, '/follow', '[data-follow-item] .fbadge.dup');
+    const opened = await openFollow(browser, '/follow', '[data-follow-item] [data-follow-seealso]');
     try {
-      const [badge] = await lineGeometry(opened.page, '[data-follow-item] .fbadge.dup');
+      const [badge] = await lineGeometry(opened.page, '[data-follow-item] [data-follow-seealso]');
       assert.ok(badge, '卡片上没有「另见」徽章');
       assert.equal(badge.text, '另见');
       assert.equal(badge.alt, 'Rule34.xxx');
@@ -150,12 +150,49 @@ describe('关注的出处用站点图标', () => {
     }
   });
 
+  /* 设计决定，与谁挂哪枚字样（`test/react/follow-marks.test.ts`）分开量：另见与版本字样是状态标记，
+     不是标签，圆角走 `--badge-radius`；「含 WIP」说的是同组另一条，比 WIP 本体弱一档；SFW 模式下
+     站点图标和品牌标一样不糊。字样按 `follow-marks.ts` 的形状临时摆进卡片标题里量。 */
+  it('另见与版本字样是状态标记：徽章圆角、虚线框，含 WIP 弱于 WIP；SFW 模式不糊站点图标', { timeout: 60_000 }, async () => {
+    const opened = await openFollow(browser, '/follow', '[data-follow-item] [data-follow-seealso]');
+    try {
+      const look = await opened.page.evaluate(() => {
+        const badge = document.querySelector('[data-follow-item] [data-follow-seealso]')!;
+        const probe = document.createElement('span');
+        probe.style.cssText = 'border-radius:var(--badge-radius);color:var(--muted);background:var(--meter)';
+        badge.parentElement!.append(probe);
+        const want = getComputedStyle(probe);
+        const expected = { radius: want.borderTopLeftRadius, muted: want.color, meter: want.backgroundColor };
+        probe.remove();
+        const title = badge.closest('[data-follow-item]')!.querySelector('[data-media-title]') ?? badge.parentElement!;
+        title.insertAdjacentHTML('afterbegin', '<small class="javedition" data-follow-edition="wip">WIP</small>'
+          + '<small class="javedition" data-follow-edition="has-wip">含 WIP</small>');
+        const [wip, hasWip] = [...title.querySelectorAll('[data-follow-edition]')].map((node) => getComputedStyle(node));
+        const shape = getComputedStyle(badge);
+        document.body.classList.add('censor');
+        const icon = getComputedStyle(badge.querySelector('[data-follow-site-icon]')!).filter;
+        document.body.classList.remove('censor');
+        return { expected, radius: shape.borderTopLeftRadius, border: shape.borderTopStyle,
+          editionRadius: wip!.borderTopLeftRadius, wip: wip!.color, hasWip: hasWip!.color, icon };
+      });
+      assert.equal(look.radius, look.expected.radius, '另见是状态标记，圆角走 --badge-radius');
+      assert.equal(look.editionRadius, look.expected.radius, '版本字样同是状态标记');
+      assert.equal(look.border, 'dashed');
+      assert.equal(look.wip, look.expected.meter, 'WIP 本体着 --meter');
+      assert.equal(look.hasWip, look.expected.muted, '「含 WIP」弱化成 --muted');
+      assert.equal(look.icon, 'none', 'SFW 模式下站点图标不糊');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('卡面换成别的站那条时，另见列主条目的站、不列卡面自己的站', { timeout: 60_000 }, async () => {
-    const opened = await openFollow(browser, '/follow', '[data-follow-item="12"] .fbadge.dup');
+    const opened = await openFollow(browser, '/follow', '[data-follow-item="12"] [data-follow-seealso]');
     try {
       const card = opened.page.locator('[data-follow-item="12"]');
       const shown = await card.locator('[data-media-badge]').getAttribute('title');
-      const alts = await card.locator('.fbadge.dup img').evaluateAll((icons) =>
+      const alts = await card.locator('[data-follow-seealso] img').evaluateAll((icons) =>
         icons.map((icon) => icon.getAttribute('alt')));
       assert.equal(shown, 'Rule34.xxx', '卡面没有换成有视频的那条');
       assert.deepEqual(alts, ['pixivFANBOX', 'Pawchive'], `另见列的站不对：${JSON.stringify(alts)}`);
